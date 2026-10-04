@@ -18,6 +18,11 @@ type resource = T.content T.resource
 type t = {
   env: Eio_unix.Stdenv.base;
   dev: bool;
+  (* When true, locally-authored articles bypass their `redirect` meta
+     entirely and are planted (and thus routed/rendered/output) exactly as
+     if it were absent -- an explicit, per-build opt-in to including
+     otherwise-redirected content, e.g. for a private/local-only build. *)
+  include_private: bool;
   config: Config.t;
   index: Tree.t URI.Tbl.t;
   diagnostics: Reporter.Message.t Asai.Diagnostic.t list URI.Tbl.t;
@@ -33,6 +38,7 @@ type t = {
 }
 
 let make ~(env : Eio_unix.Stdenv.base) ~(config : Config.t) ~(dev : bool)
+    ?(include_private = false)
     ?(graphs = (module Forest_graphs.Make () : Forest_graphs.S))
     ?(import_graph = Forest_graph.create ~size:1000 ())
     ?(resolver = URI.Tbl.create 1000) ?(index = URI.Tbl.create 1000)
@@ -43,6 +49,7 @@ let make ~(env : Eio_unix.Stdenv.base) ~(config : Config.t) ~(dev : bool)
   {
     env;
     dev;
+    include_private;
     config;
     index;
     diagnostics;
@@ -337,11 +344,13 @@ let plant_resource ?(route_locally = true) ?(include_in_manifest = true)
    `redirect` meta and, if present, plants the article as fully non-local
    and manifest-excluded, with its redirect target recorded for routing. *)
 let plant_article (article : T.content T.article) (forest : t) : unit =
-  match redirect_uri_of_frontmatter article.frontmatter with
-  | None -> plant_resource (T.Article article) forest
-  | Some target ->
-    plant_resource ~route_locally:false ~include_in_manifest:false
-      ~redirect_uri:(Some target) (T.Article article) forest
+  if forest.include_private then plant_resource (T.Article article) forest
+  else
+    match redirect_uri_of_frontmatter article.frontmatter with
+    | None -> plant_resource (T.Article article) forest
+    | Some target ->
+      plant_resource ~route_locally:false ~include_in_manifest:false
+        ~redirect_uri:(Some target) (T.Article article) forest
 
 let serialize_graphs : (module Forest_graphs.S) -> 'a =
  fun s ->

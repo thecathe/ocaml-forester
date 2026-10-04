@@ -42,11 +42,11 @@ let index_of_substring ~needle haystack =
 let contains_substring ~needle haystack =
   Option.is_some @@ index_of_substring ~needle haystack
 
-let with_forest ~env (f : State.t -> unit) =
+let with_forest ?(include_private = false) ~env (f : State.t -> unit) =
   let@ () = Reporter.easy_run in
   with_test_forest ~raw_trees ~env ~config (fun path ->
       Sys.chdir (Eio.Path.native_exn path);
-      let forest = Driver.batch_run ~env ~config ~dev:false in
+      let forest = Driver.batch_run ~env ~config ~dev:false ~include_private () in
       f forest)
 
 let test_output_excluded ~env () =
@@ -135,6 +135,30 @@ let test_backlinks_excludes_redirect ~env () =
         (contains_substring ~needle:(URI.to_string person_uri)
            backmatter_region))
 
+let test_include_private_suppresses_redirect ~env () =
+  with_forest ~env ~include_private:true (fun forest ->
+      let evaluated =
+        match State.find_opt forest person_uri with
+        | Some tree -> (
+          match Tree.to_evaluated tree with
+          | Some e -> e
+          | None -> Alcotest.fail "person is not a planted resource")
+        | None -> Alcotest.fail "person tree not found"
+      in
+      Alcotest.(check bool)
+        "with include_private, the redirect-flagged tree is routed locally \
+         like any other"
+        true evaluated.route_locally;
+      Alcotest.(check bool)
+        "with include_private, the redirect-flagged tree is included in \
+         the manifest"
+        true evaluated.include_in_manifest;
+      Forester.render_forest ~dev:false ~forest;
+      Alcotest.(check bool)
+        "with include_private, the tree's own output is written after all"
+        true
+        (Sys.file_exists "output/person/index.xml"))
+
 let () =
   let@ env = Eio_main.run in
   Logs.set_level (Some Debug);
@@ -148,5 +172,7 @@ let () =
             (test_link_redirects ~env);
           test_case "excluded from backlinks" `Quick
             (test_backlinks_excludes_redirect ~env);
+          test_case "include_private suppresses the redirect" `Quick
+            (test_include_private_suppresses_redirect ~env);
         ] );
     ]

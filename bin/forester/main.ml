@@ -35,11 +35,11 @@ let version =
   in
   Format.asprintf "%s" major
 
-let build ~env _ config_filename dev no_theme =
+let build ~env _ config_filename dev no_theme include_private =
   Reporter.easy_run @@ fun () ->
   let config = Config_parser.parse_forest_config_file config_filename in
   Logs.debug (fun m -> m "Parsed config file %s" config_filename);
-  let forest = Driver.batch_run ~env ~dev ~config in
+  let forest = Driver.batch_run ~env ~dev ~config ~include_private () in
   forest.diagnostics
   |> URI.Tbl.iter (fun _ d -> List.iter Reporter.Tty.display d);
   begin if not no_theme then
@@ -53,7 +53,7 @@ let build ~env _ config_filename dev no_theme =
 let new_tree ~env config_filename dest_dir prefix template random =
   let@ () = Reporter.silence in
   let config = Config_parser.parse_forest_config_file config_filename in
-  let forest = Driver.batch_run ~env ~dev:true ~config in
+  let forest = Driver.batch_run ~env ~dev:true ~config () in
   let mode = if random then `Random else `Sequential in
   let new_tree =
     Forester.create_tree ~env ~dest_dir ~prefix ~template ~mode ~forest
@@ -63,14 +63,14 @@ let new_tree ~env config_filename dest_dir prefix template random =
 let complete ~env config_filename title =
   let@ () = Reporter.silence in
   let config = Config_parser.parse_forest_config_file config_filename in
-  let forest = Driver.batch_run ~env ~dev:true ~config in
+  let forest = Driver.batch_run ~env ~dev:true ~config () in
   let@ uri, title = List.iter @~ Forester.complete ~forest title in
   Format.printf "%s, %s\n" uri title
 
 let query_all ~env config_filename =
   let@ () = Reporter.silence in
   let config = Config_parser.parse_forest_config_file config_filename in
-  let forest = Driver.batch_run ~env ~config ~dev:true in
+  let forest = Driver.batch_run ~env ~config ~dev:true () in
   Format.printf "%s" (Forester.json_manifest ~dev:true ~forest)
 
 let default_config_str =
@@ -165,6 +165,15 @@ let build_cmd ~env =
     let doc = "Build without copying the theme directory" in
     Arg.value @@ Arg.flag @@ Arg.info ["no-theme"] ~doc
   in
+  let arg_include_private =
+    let doc =
+      "Include trees marked with $(b,\\\\meta{redirect}{<url>}) in the \
+       build, as if that meta were absent, instead of excluding them and \
+       redirecting inbound links to <url>. Use this for a private or \
+       local-only build where you want to see everything."
+    in
+    Arg.value @@ Arg.flag @@ Arg.info ["include-private"] ~doc
+  in
   let doc = "Build the forest" in
   let man =
     [
@@ -180,7 +189,9 @@ let build_cmd ~env =
   in
   let info = Cmd.info "build" ~version ~doc ~man in
   Cmd.v info
-    Term.(const (build ~env) $ arg_logs $ arg_config $ arg_dev $ arg_no_theme)
+    Term.(
+      const (build ~env)
+      $ arg_logs $ arg_config $ arg_dev $ arg_no_theme $ arg_include_private)
 
 let new_tree_cmd ~env =
   let arg_prefix =

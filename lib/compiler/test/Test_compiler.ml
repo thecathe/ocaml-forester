@@ -140,7 +140,7 @@ let test_reparsing ~env () =
 
 let test_omits_paths ~env () =
   let@ () = Reporter.easy_run in
-  let forest = Driver.batch_run ~env ~config ~dev:false in
+  let forest = Driver.batch_run ~env ~config ~dev:false () in
   let path =
     match forest.@{URI.of_string_exn "http://forest.local/t8/"} with
     | Some (Article {frontmatter = {source_path; _}; _}) -> source_path

@@ -45,7 +45,7 @@ let () =
       check_diagnostic (Resource_not_found (URI.of_string_exn "asdf"))
     in
     let@ () = Reporter.easy_run in
-    let forest = Driver.batch_run ~env ~config ~dev:false in
+    let forest = Driver.batch_run ~env ~config ~dev:false () in
     Alcotest.(check @@ list action)
       ""
       [

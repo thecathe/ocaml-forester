@@ -61,7 +61,7 @@ let test_search (forest : State.t) =
 let main ~env () =
   let config = Config_parser.parse_forest_config_file "forest.toml" in
   let dev = true in
-  let forest = Driver.batch_run ~env ~dev ~config in
+  let forest = Driver.batch_run ~env ~dev ~config () in
   let articles = List.of_seq @@ State.get_all_articles forest in
   let index =
     (* Reporter.profile "Building index" @@ fun () -> *)
