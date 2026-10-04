@@ -33,6 +33,7 @@ type evaluated = {
   resource: T.content T.resource;
   route_locally: bool;
   include_in_manifest: bool;
+  redirect_uri: URI.t option;
   expanded: syn option;
 }
 [@@deriving show]

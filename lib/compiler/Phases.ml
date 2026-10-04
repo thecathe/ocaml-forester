@@ -136,7 +136,7 @@ let eval_only (uri : URI.t) (forest : State.t) =
     in
     begin
       let@ article = List.iter @~ articles in
-      State.plant_resource (Article article) forest
+      State.plant_article article forest
     end;
     (forest, diagnostics)
 

@@ -31,6 +31,7 @@ let route (forest : State.t) uri : URI.t =
   | None -> uri
   | Some tree -> begin
     match Tree.to_evaluated tree with
+    | Some {redirect_uri = Some target; _} -> target
     | Some evaluated when evaluated.route_locally ->
       let path = "" :: local_path_components forest.config uri in
       URI.make ~path ()
@@ -262,6 +263,19 @@ and render_transclusion ~env (transclusion : T.transclusion) : P.node list =
 
 and render_link ~env (link : T.content T.link) : P.node list =
   let article_opt = State.get_article link.href env.forest in
+  (* A redirect-flagged local tree is still a known article (`article_opt`
+     is `Some`), but it must be rendered exactly like a genuine external
+     link: an external `type_`, and no `uri`/`display-uri` attributes
+     exposing its real local address (the `href` itself is already handled
+     correctly by `route`, which returns the redirect target). *)
+  let redirect_target =
+    match env.forest.={link.href} with
+    | None -> None
+    | Some tree -> (
+      match Tree.to_evaluated tree with
+      | Some {redirect_uri; _} -> redirect_uri
+      | None -> None)
+  in
   let attrs =
     match article_opt with
     | None ->
@@ -277,6 +291,11 @@ and render_link ~env (link : T.content T.link) : P.node list =
         X.type_ "external";
       ]
     | Some article ->
+      let canonical_uri =
+        match redirect_target with
+        | Some _ -> None
+        | None -> article.frontmatter.uri
+      in
       [
         X.href "%s" @@ URI.to_string @@ route env.forest link.href;
         X.title_ "%s"
@@ -284,13 +303,12 @@ and render_link ~env (link : T.content T.link) : P.node list =
              ~router:(route env.forest)
         @@ State.get_expanded_title ?scope:env.uri article.frontmatter
              env.forest;
-        X.optional_ (X.uri_ "%s")
-        @@ Option.map URI.to_string article.frontmatter.uri;
+        X.optional_ (X.uri_ "%s") @@ Option.map URI.to_string canonical_uri;
         X.optional_ (X.display_uri_ "%s")
         @@ Option.map
              (URI.display_path_string ~base:env.forest.config.url)
-             article.frontmatter.uri;
-        X.type_ "local";
+             canonical_uri;
+        X.type_ (match redirect_target with Some _ -> "external" | None -> "local");
       ]
   in
   [X.link attrs @@ render_content ~env link.content]

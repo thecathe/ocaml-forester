@@ -50,6 +50,7 @@ let render ~forest expanded =
                   expanded = None;
                   route_locally = true;
                   include_in_manifest = true;
+                  redirect_uri = None;
                 })
           articles
       in

@@ -237,8 +237,54 @@ let suggestion_for_uri uri forest =
       | None -> Not_found {suggestion = URI.Tbl.find_opt forest.suggestions uri}
       ))
 
+(* The reserved `\meta{redirect}{<url>}` key: when present on a locally
+   authored article, the article is planted as if it were a foreign,
+   non-routed resource whose canonical URI is the given external target --
+   see `plant_article` below. We deliberately do NOT overwrite
+   `frontmatter.uri` with the redirect target: that field is used both as
+   this resource's index key (`T.uri_for_resource`) and as the scope for all
+   of its own outbound Datalog facts (see `Forest.analyse_resource`), so
+   mutating it would file the tree under the wrong key and corrupt the
+   link-graph's scoping. `redirect_uri` is therefore a separate field on
+   `Tree.evaluated`, consulted only by routing/rendering. *)
+let redirect_meta_key = "redirect"
+
+let text_of_simple_content (content : T.content) : string option =
+  let rec loop acc = function
+    | [] -> Some (String.concat "" (List.rev acc))
+    | (T.Text txt | T.CDATA txt) :: rest -> loop (txt :: acc) rest
+    | T.Uri uri :: rest -> loop (URI.to_string uri :: acc) rest
+    | _ -> None
+  in
+  loop [] (T.extract_content content)
+
+let redirect_uri_of_frontmatter (fm : T.content T.frontmatter) : URI.t option
+    =
+  match List.assoc_opt redirect_meta_key fm.metas with
+  | None -> None
+  | Some content -> (
+    match text_of_simple_content content with
+    | None ->
+      Reporter.fatal Invalid_URI
+        ~extra_remarks:
+          [
+            Asai.Diagnostic.loctext
+              "the `redirect` meta must be a simple URL string, not rich \
+               content";
+          ]
+    | Some str -> (
+      match URI.of_string_exn str with
+      | uri -> Some uri
+      | exception _ ->
+        Reporter.fatal Invalid_URI
+          ~extra_remarks:
+            [
+              Asai.Diagnostic.loctextf
+                "the `redirect` meta is not a valid URL: %s" str;
+            ]))
+
 let plant_resource ?(route_locally = true) ?(include_in_manifest = true)
-    resource forest =
+    ?(redirect_uri = None) resource forest =
   let module Graphs = (val forest.graphs) in
   Forest.analyse_resource forest.graphs resource;
   let@ uri = Option.iter @~ T.uri_for_resource resource in
@@ -256,14 +302,46 @@ let plant_resource ?(route_locally = true) ?(include_in_manifest = true)
   match forest.={uri} with
   | None ->
     forest.={uri} <-
-      Resource {resource; expanded = None; route_locally; include_in_manifest}
+      Resource
+        {
+          resource;
+          expanded = None;
+          route_locally;
+          include_in_manifest;
+          redirect_uri;
+        }
   | Some (Tree.Expanded syn) ->
     forest.={uri} <-
       Resource
-        {resource; expanded = Some syn; route_locally; include_in_manifest}
+        {
+          resource;
+          expanded = Some syn;
+          route_locally;
+          include_in_manifest;
+          redirect_uri;
+        }
   | _ ->
     forest.={uri} <-
-      Resource {resource; expanded = None; route_locally; include_in_manifest}
+      Resource
+        {
+          resource;
+          expanded = None;
+          route_locally;
+          include_in_manifest;
+          redirect_uri;
+        }
+
+(* Entry point for planting a locally-authored article (as opposed to a
+   foreign/imported resource, which goes through `plant_resource` directly
+   with its own `route_locally`/`include_in_manifest` config). Checks for a
+   `redirect` meta and, if present, plants the article as fully non-local
+   and manifest-excluded, with its redirect target recorded for routing. *)
+let plant_article (article : T.content T.article) (forest : t) : unit =
+  match redirect_uri_of_frontmatter article.frontmatter with
+  | None -> plant_resource (T.Article article) forest
+  | Some target ->
+    plant_resource ~route_locally:false ~include_in_manifest:false
+      ~redirect_uri:(Some target) (T.Article article) forest
 
 let serialize_graphs : (module Forest_graphs.S) -> 'a =
  fun s ->

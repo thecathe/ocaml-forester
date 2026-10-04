@@ -94,7 +94,7 @@ let update (action : Action.t) (forest : State.t) =
       |> List.map (fun (Eval.{articles; jobs}, diagnostics) ->
           begin
             let@ article = List.iter @~ articles in
-            State.plant_resource (T.Article article) forest
+            State.plant_article article forest
           end;
           (jobs, diagnostics))
       |> List.split

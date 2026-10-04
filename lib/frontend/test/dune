@@ -8,7 +8,8 @@
   Test_config
   Test_implanting
   Test_json_manifest_client
-  Test_legacy_xml_client)
+  Test_legacy_xml_client
+  Test_redirect_meta)
  (preprocess
   (pps ppx_deriving.show ppx_yojson_conv))
  (libraries
