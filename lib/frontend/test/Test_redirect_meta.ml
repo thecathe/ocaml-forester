@@ -250,6 +250,51 @@ let test_tag_show_is_default ~env () =
       Alcotest.(check bool) "`show` leaves the tree routed" true priv.route_locally;
       Alcotest.(check bool) "and not hidden" false priv.hidden)
 
+let test_tags_emitted_with_page_links ~env () =
+  let config =
+    {
+      config with
+      tag_rules =
+        [
+          {tag = "must-preorder"; tag_behaviour = Show; page = true};
+          {tag = "nopage"; tag_behaviour = Show; page = true};
+        ];
+    }
+  in
+  let raw_trees =
+    [
+      {
+        path = "a.tree";
+        content =
+          {|\title{A}\tag{must-preorder}\tag{nopage}\tag{plain}|};
+      };
+      {
+        path = "tag-must-preorder.tree";
+        content = {|\title{must-preorder}\taxon{Tag}|};
+      };
+    ]
+  in
+  with_forest ~config ~raw_trees ~env (fun forest ->
+      let article =
+        match State.get_article (URI_scheme.named_uri ~base:config.url "a") forest with
+        | Some a -> a
+        | None -> Alcotest.fail "a not found"
+      in
+      let rendered =
+        Format.asprintf "%a" (Legacy_xml_client.pp_xml ~forest ?stylesheet:None) article
+      in
+      Alcotest.(check bool)
+        "tag with an existing page links to it" true
+        (contains_substring ~needle:{|name="must-preorder" href="/tag-must-preorder/"|} rendered);
+      Alcotest.(check bool)
+        "tag with page = true but no such page has no href" true
+        (contains_substring ~needle:{|name="nopage"|} rendered
+         && not (contains_substring ~needle:{|name="nopage" href|} rendered));
+      Alcotest.(check bool)
+        "unconfigured tag is listed without href" true
+        (contains_substring ~needle:{|name="plain"|} rendered
+         && not (contains_substring ~needle:{|name="plain" href|} rendered)))
+
 let () =
   let@ env = Eio_main.run in
   Logs.set_level (Some Debug);
@@ -275,5 +320,7 @@ let () =
           test_case "hide excluded from backlinks" `Quick
             (test_tag_hide_excluded_from_backlinks ~env);
           test_case "show is a no-op" `Quick (test_tag_show_is_default ~env);
+          test_case "tags emitted, linked to existing pages" `Quick
+            (test_tags_emitted_with_page_links ~env);
         ] );
     ]

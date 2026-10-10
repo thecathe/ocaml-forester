@@ -48,6 +48,8 @@ val title_ : _ string_attr
 val text_ : _ string_attr
 val number : _ text_tag
 val meta : std_tag
+val tags : std_tag
+val tag : std_tag
 val name : _ string_attr
 val tex : _ text_tag
 val display : _ string_attr

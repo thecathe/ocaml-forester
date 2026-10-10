@@ -46,3 +46,7 @@ val default_meta_rules : meta_rule list
 val default_url : URI.t
 val default : ?url:URI.t -> unit -> t
 val home_uri : t -> URI.t
+
+val tag_page_address : string -> string
+(** [tag_page_address "must-preorder"] is ["tag-must-preorder"]: the address of
+    the generated page for a tag with [page = true]. *)

@@ -68,3 +68,20 @@ let default ?(url = default_url) () : t =
   }
 
 let home_uri config = config.home
+
+(* Address of the generated page for a tag (see the tag-page generator in the
+   forest's scripts, which must use the same rule): "tag-" followed by the
+   tag lowercased with runs of non-alphanumerics collapsed to "-". *)
+let tag_page_address tag =
+  let buf = Buffer.create (String.length tag) in
+  let pending_dash = ref false in
+  String.iter
+    (fun c ->
+      match c with
+      | 'A' .. 'Z' | 'a' .. 'z' | '0' .. '9' ->
+        if !pending_dash && Buffer.length buf > 0 then Buffer.add_char buf '-';
+        pending_dash := false;
+        Buffer.add_char buf (Char.lowercase_ascii c)
+      | _ -> pending_dash := true)
+    tag;
+  "tag-" ^ if Buffer.length buf = 0 then "tag" else Buffer.contents buf
