@@ -330,6 +330,23 @@ let parse lexbuf filename =
             "`author` must be a string or an array of strings"
       end
     in
+    (* [forest.taxon.<Name>]: page = true | false (default true) *)
+    let taxon_rules =
+      let@ k, v = List.map @~ sub_table ~k:"taxon" in
+      let taxon_name = key_name k in
+      let where = "forest.taxon." ^ taxon_name in
+      match v with
+      | Toml.Types.TTable t ->
+        let taxon_page =
+          match bool_field ~where t "page" with
+          | None -> true
+          | Some b ->
+            claim ["forest"; "taxon"; taxon_name; "page"];
+            b
+        in
+        Config.{taxon_name; taxon_page}
+      | _ -> invalid_value ~where:"forest.taxon" "expected a table per taxon"
+    in
     begin if not (Key_set.is_empty !keys) then
       let keys =
         !keys |> Key_set.to_list
@@ -337,7 +354,7 @@ let parse lexbuf filename =
       in
       Reporter.emit (Uninterpreted_config_options keys)
     end;
-    Config.{url; assets; trees; foreign; home; meta_rules; tag_rules; prefix_rules; directory_rules; new_authors}
+    Config.{url; assets; trees; foreign; home; meta_rules; tag_rules; prefix_rules; directory_rules; new_authors; taxon_rules}
 
 let parse_forest_config_string str =
   let lexbuf = Lexing.from_string str in

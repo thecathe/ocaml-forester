@@ -41,6 +41,12 @@ type prefix_rule = {prefix: char; prefix_taxon: string}
 type directory_rule = {dir: string; dir_tags: string list}
 [@@deriving show, repr]
 
+(* Per-taxon settings. Every taxon in use gets a generated page unless
+   `page = false`; only the page generator consults this, the compiler just
+   links a taxon to its page when that page exists. *)
+type taxon_rule = {taxon_name: string; taxon_page: bool}
+[@@deriving show, repr]
+
 type t = {
   trees: string list;
   assets: string list;
@@ -52,6 +58,7 @@ type t = {
   prefix_rules: prefix_rule list;
   directory_rules: directory_rule list;
   new_authors: string list;
+  taxon_rules: taxon_rule list;
 }
 [@@deriving show, repr]
 
@@ -75,15 +82,17 @@ let default ?(url = default_url) () : t =
     prefix_rules = [];
     directory_rules = [];
     new_authors = [];
+    taxon_rules = [];
   }
 
 let home_uri config = config.home
 
-(* Address of the generated page for a tag (see the tag-page generator in the
-   forest's scripts, which must use the same rule): "tag-" followed by the
-   tag lowercased with runs of non-alphanumerics collapsed to "-". *)
-let tag_page_address tag =
-  let buf = Buffer.create (String.length tag) in
+(* Address of the generated page for a tag or taxon (see the page generator in
+   the forest's scripts, which must use the same rule): a "tag-"/"taxon-"
+   prefix followed by the name lowercased with runs of non-alphanumerics
+   collapsed to "-". *)
+let slug name =
+  let buf = Buffer.create (String.length name) in
   let pending_dash = ref false in
   String.iter
     (fun c ->
@@ -93,5 +102,8 @@ let tag_page_address tag =
         pending_dash := false;
         Buffer.add_char buf (Char.lowercase_ascii c)
       | _ -> pending_dash := true)
-    tag;
-  "tag-" ^ if Buffer.length buf = 0 then "tag" else Buffer.contents buf
+    name;
+  if Buffer.length buf = 0 then "tag" else Buffer.contents buf
+
+let tag_page_address tag = "tag-" ^ slug tag
+let taxon_page_address taxon = "taxon-" ^ slug taxon
