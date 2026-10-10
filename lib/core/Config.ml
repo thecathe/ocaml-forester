@@ -51,6 +51,7 @@ type t = {
   tag_rules: tag_rule list;
   prefix_rules: prefix_rule list;
   directory_rules: directory_rule list;
+  new_authors: string list;
 }
 [@@deriving show, repr]
 
@@ -73,6 +74,7 @@ let default ?(url = default_url) () : t =
     tag_rules = [];
     prefix_rules = [];
     directory_rules = [];
+    new_authors = [];
   }
 
 let home_uri config = config.home

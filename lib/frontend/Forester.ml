@@ -30,7 +30,13 @@ let create_tree ~env ~dest_dir ~prefix ~template ~mode ~(forest : State.t) =
     | Some name ->
       EP.load EP.(Eio.Stdenv.cwd env / "templates" / (name ^ ".tree"))
   in
-  let body = Format.asprintf "\\date{%a}\n" Human_datetime.pp now in
+  let body =
+    Format.asprintf "\\date{%a}\n" Human_datetime.pp now
+    ^ String.concat ""
+        (List.map
+           (fun a -> Printf.sprintf "\\author{%s}\n" a)
+           forest.config.new_authors)
+  in
   let create = `Exclusive 0o644 in
   (* If no dest_dir is passed, use the config *)
   let dir =

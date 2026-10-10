@@ -408,6 +408,25 @@ let test_directory_tag_mask ~env () =
       in
       Alcotest.(check int) "own tag kept, mask tag added" 2 tags)
 
+let test_new_tree_author ~env () =
+  let config = {config with new_authors = ["@jpears"; "@cathe"]} in
+  with_forest ~config ~raw_trees:[] ~env (fun forest ->
+      let path =
+        Forester.create_tree ~env ~dest_dir:(Some "trees") ~prefix:None
+          ~template:None ~mode:`Random ~forest
+      in
+      let ic = open_in path in
+      let content = really_input_string ic (in_channel_length ic) in
+      close_in ic;
+      let lines = String.split_on_char '\n' content in
+      match lines with
+      | date :: a1 :: a2 :: _ ->
+        Alcotest.(check bool) "first line is the date" true
+          (String.starts_with ~prefix:"\\date{" date);
+        Alcotest.(check string) "first author directly below the date" "\\author{@jpears}" a1;
+        Alcotest.(check string) "second author follows" "\\author{@cathe}" a2
+      | _ -> Alcotest.fail ("unexpected content: " ^ content))
+
 let () =
   let@ env = Eio_main.run in
   Logs.set_level (Some Debug);
@@ -433,6 +452,8 @@ let () =
           test_case "hide excluded from backlinks" `Quick
             (test_tag_hide_excluded_from_backlinks ~env);
           test_case "show is a no-op" `Quick (test_tag_show_is_default ~env);
+          test_case "new trees get configured authors below the date" `Quick
+            (test_new_tree_author ~env);
           test_case "directory rule masks tags onto trees" `Quick
             (test_directory_tag_mask ~env);
           test_case "json blob syndication excludes hidden trees" `Quick
