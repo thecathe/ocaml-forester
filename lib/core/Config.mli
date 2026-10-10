@@ -7,14 +7,41 @@
 type foreign = {path: string; route_locally: bool; include_in_manifest: bool}
 [@@deriving show]
 
+type meta_behaviour = Redirect | Local_redirect | External | Self
+[@@deriving show]
+
+type meta_rule = {
+  key: string;
+  taxon: string option;
+  behaviour: meta_behaviour;
+}
+[@@deriving show]
+
+type tag_behaviour = Hide | Show [@@deriving show]
+
+type tag_rule = {
+  tag: string;
+  tag_behaviour: tag_behaviour;
+  page: bool;
+}
+[@@deriving show]
+
+type prefix_rule = {prefix: char; prefix_taxon: string} [@@deriving show]
+
 type t = {
   trees: string list;
   assets: string list;
   foreign: foreign list;
   url: URI.t;
   home: URI.t;
+  meta_rules: meta_rule list;
+  tag_rules: tag_rule list;
+  prefix_rules: prefix_rule list;
 }
 [@@deriving show]
+
+val default_meta_rules : meta_rule list
+(** The built-in rules: [redirect] ↦ [Redirect], [external] ↦ [External]. *)
 
 val default_url : URI.t
 val default : ?url:URI.t -> unit -> t
