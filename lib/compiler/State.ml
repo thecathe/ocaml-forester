@@ -314,6 +314,50 @@ let redirect_uri_of_frontmatter (config : Config.t)
     Some (redirect_target_of_content ~key content)
   | Some External | None -> None
 
+(* Tags applied by `[forest.directory."<path>"]` rules to every tree whose
+   source file lives under that directory (resolved against the working
+   directory, which is the config file's directory). *)
+let directory_tags (forest : t) (uri : URI.t) : string list =
+  match forest.config.directory_rules with
+  | [] -> []
+  | rules -> (
+    match URI.Tbl.find_opt forest.resolver uri with
+    | None -> []
+    | Some path ->
+      let canon p = try Unix.realpath p with _ -> p in
+      let path = canon path in
+      let@ rule = List.concat_map @~ rules in
+      let dir = canon (Filename.concat (Sys.getcwd ()) rule.Config.dir) in
+      let dir = if String.ends_with ~suffix:"/" dir then dir else dir ^ "/" in
+      if String.starts_with ~prefix:dir path then rule.dir_tags else [])
+
+let apply_directory_tags (forest : t) (article : T.content T.article) :
+    T.content T.article =
+  match article.frontmatter.uri with
+  | None -> article
+  | Some uri -> (
+    match directory_tags forest uri with
+    | [] -> article
+    | masks ->
+      let present =
+        List.filter_map
+          (function
+            | T.Content_vertex c ->
+              Option.map String.trim (text_of_simple_content c)
+            | T.Uri_vertex _ -> None)
+          article.frontmatter.tags
+      in
+      let extra =
+        masks
+        |> List.filter (fun m -> not (List.mem m present))
+        |> List.sort_uniq compare
+        |> List.map (fun m -> T.Content_vertex (T.Content [T.Text m]))
+      in
+      let frontmatter =
+        {article.frontmatter with tags = article.frontmatter.tags @ extra}
+      in
+      {article with frontmatter})
+
 let is_hidden_by_tag (config : Config.t) (fm : T.content T.frontmatter) : bool =
   let@ vertex = List.exists @~ fm.tags in
   match vertex with
@@ -387,6 +431,7 @@ let plant_resource ?(route_locally = true) ?(include_in_manifest = true)
    generated backmatter sections); a meta resolving to a redirect behaviour
    does the same but records its target for routing. *)
 let plant_article (article : T.content T.article) (forest : t) : unit =
+  let article = apply_directory_tags forest article in
   let fm = article.frontmatter in
   if is_hidden_by_tag forest.config fm then
     plant_resource ~route_locally:false ~include_in_manifest:false ~hidden:true

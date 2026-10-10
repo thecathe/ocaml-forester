@@ -28,6 +28,8 @@ type tag_rule = {
 
 type prefix_rule = {prefix: char; prefix_taxon: string} [@@deriving show]
 
+type directory_rule = {dir: string; dir_tags: string list} [@@deriving show]
+
 type t = {
   trees: string list;
   assets: string list;
@@ -37,6 +39,7 @@ type t = {
   meta_rules: meta_rule list;
   tag_rules: tag_rule list;
   prefix_rules: prefix_rule list;
+  directory_rules: directory_rule list;
 }
 [@@deriving show]
 

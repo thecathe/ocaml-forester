@@ -382,6 +382,32 @@ let test_json_blob_excludes_hidden ~env () =
         "hidden tree is not in the blob" false
         (contains_substring ~needle:"SecretTitle" content))
 
+let test_directory_tag_mask ~env () =
+  let config =
+    {
+      config with
+      trees = ["trees"; "private"];
+      directory_rules = [{dir = "private"; dir_tags = ["private"]}];
+      tag_rules = [{tag = "private"; tag_behaviour = Hide; page = false}];
+    }
+  in
+  let raw_trees =
+    [
+      {path = "private/a.tree"; content = {|\title{A}\tag{extra}|}};
+      {path = "c.tree"; content = {|\title{C}|}};
+    ]
+  in
+  with_forest ~config ~raw_trees ~env (fun forest ->
+      let ev name = evaluated_of ~forest (URI_scheme.named_uri ~base:config.url name) in
+      Alcotest.(check bool) "tree in masked dir is hidden by the masked tag" true (ev "a").hidden;
+      Alcotest.(check bool) "tree outside the dir is untouched" false (ev "c").hidden;
+      let tags =
+        match State.get_article (URI_scheme.named_uri ~base:config.url "a") forest with
+        | Some a -> List.length a.frontmatter.tags
+        | None -> Alcotest.fail "a not found"
+      in
+      Alcotest.(check int) "own tag kept, mask tag added" 2 tags)
+
 let () =
   let@ env = Eio_main.run in
   Logs.set_level (Some Debug);
@@ -407,6 +433,8 @@ let () =
           test_case "hide excluded from backlinks" `Quick
             (test_tag_hide_excluded_from_backlinks ~env);
           test_case "show is a no-op" `Quick (test_tag_show_is_default ~env);
+          test_case "directory rule masks tags onto trees" `Quick
+            (test_directory_tag_mask ~env);
           test_case "json blob syndication excludes hidden trees" `Quick
             (test_json_blob_excludes_hidden ~env);
           test_case "warns on links/transclusions of hidden trees" `Quick

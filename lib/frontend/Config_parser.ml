@@ -288,6 +288,28 @@ let parse lexbuf filename =
       end
       | _ -> invalid_value ~where:"forest.prefix" "expected a table per prefix"
     in
+    (* [forest.directory."<path>"]: tags = ["<tag>", ...] *)
+    let directory_rules =
+      let@ k, v = List.map @~ sub_table ~k:"directory" in
+      let dir = key_name k in
+      let where = Printf.sprintf "forest.directory.%S" dir in
+      match v with
+      | Toml.Types.TTable t -> begin
+        match
+          Toml.Types.Table.find_opt (Toml.Types.Table.Key.of_string "tags") t
+        with
+        | Some (Toml.Types.TArray (Toml.Types.NodeString tags)) ->
+          claim ["forest"; "directory"; dir; "tags"];
+          Config.{dir; dir_tags = tags}
+        | Some (Toml.Types.TArray Toml.Types.NodeEmpty) ->
+          claim ["forest"; "directory"; dir; "tags"];
+          Config.{dir; dir_tags = []}
+        | Some _ -> invalid_value ~where "`tags` must be an array of strings"
+        | None -> invalid_value ~where "missing required `tags`"
+      end
+      | _ ->
+        invalid_value ~where:"forest.directory" "expected a table per directory"
+    in
     begin if not (Key_set.is_empty !keys) then
       let keys =
         !keys |> Key_set.to_list
@@ -295,7 +317,7 @@ let parse lexbuf filename =
       in
       Reporter.emit (Uninterpreted_config_options keys)
     end;
-    Config.{url; assets; trees; foreign; home; meta_rules; tag_rules; prefix_rules}
+    Config.{url; assets; trees; foreign; home; meta_rules; tag_rules; prefix_rules; directory_rules}
 
 let parse_forest_config_string str =
   let lexbuf = Lexing.from_string str in

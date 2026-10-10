@@ -36,6 +36,11 @@ type tag_rule = {
 type prefix_rule = {prefix: char; prefix_taxon: string}
 [@@deriving show, repr]
 
+(* Every tree under [dir] (a path relative to the config file, recursively)
+   is given [dir_tags] as if each had written `\tag{...}` itself. *)
+type directory_rule = {dir: string; dir_tags: string list}
+[@@deriving show, repr]
+
 type t = {
   trees: string list;
   assets: string list;
@@ -45,6 +50,7 @@ type t = {
   meta_rules: meta_rule list;
   tag_rules: tag_rule list;
   prefix_rules: prefix_rule list;
+  directory_rules: directory_rule list;
 }
 [@@deriving show, repr]
 
@@ -66,6 +72,7 @@ let default ?(url = default_url) () : t =
     meta_rules = default_meta_rules;
     tag_rules = [];
     prefix_rules = [];
+    directory_rules = [];
   }
 
 let home_uri config = config.home
