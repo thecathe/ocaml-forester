@@ -164,9 +164,46 @@ and render_frontmatter ~env (frontmatter : T.content T.frontmatter) : P.node =
                then None
                else Some (render_meta ~env meta))
              frontmatter.metas;
+        render_tags ~env frontmatter;
       ]
   in
   result
+
+(* Tags a tree carries. A tag with `page = true` links to its generated page
+   (address `Config.tag_page_address`) when that page actually exists. *)
+and render_tags ~env (frontmatter : _ T.frontmatter) =
+  let tags =
+    let@ vertex = List.filter_map @~ frontmatter.tags in
+    match vertex with
+    | T.Content_vertex content ->
+      Option.map String.trim (State.text_of_simple_content content)
+    | T.Uri_vertex _ -> None
+  in
+  if tags = [] then X.null []
+  else
+    let render tag =
+      let page =
+        let@ rule =
+          Option.bind
+            (List.find_opt
+               (fun (r : Config.tag_rule) -> r.tag = tag && r.page)
+               env.forest.config.tag_rules)
+        in
+        let uri =
+          URI_scheme.named_uri ~base:env.forest.config.url
+            (Config.tag_page_address rule.tag)
+        in
+        Option.map (fun _ -> uri) (State.get_article uri env.forest)
+      in
+      X.tag
+        (X.name "%s" tag
+        :: (match page with
+           | Some uri ->
+             [X.href "%s" @@ URI.href_string @@ route env.forest uri]
+           | None -> []))
+        []
+    in
+    X.tags [] @@ List.map render tags
 
 and render_meta ~env (key, body) =
   X.meta [X.name "%s" key] @@ render_content ~env body
