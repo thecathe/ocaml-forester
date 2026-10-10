@@ -34,6 +34,7 @@ type evaluated = {
   route_locally: bool;
   include_in_manifest: bool;
   redirect_uri: URI.t option;
+  hidden: bool;
   expanded: syn option;
 }
 [@@deriving show]

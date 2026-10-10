@@ -196,9 +196,9 @@ let any_fatal =
     Asai.Diagnostic.(fun acc x -> acc || x.severity = Error || x.severity = Bug)
     false
 
-let batch_run ~env ~(config : Config.t) ~dev ?(include_private = false) () =
+let batch_run ~env ~(config : Config.t) ~dev () =
   let init =
-    State.make ~env ~config ~dev ~include_private ()
+    State.make ~env ~config ~dev ()
     |> plant_assets |> implant_foreign
   in
   let rec go action state =

@@ -18,7 +18,7 @@ let compare_article ~forest =
   end) in
   C.compare_article
 
-(* A redirect-flagged tree must never surface in an auto-generated
+(* A redirect-flagged or hidden tree must never surface in an auto-generated
    References/Context/Backlinks/Related/Contributions section (this is the
    single choke point all of those, plus indirect-contributor inference via
    [collect_attributions] below, funnel through) -- even though the link
@@ -28,7 +28,7 @@ let is_redirect_flagged (forest : State.t) (uri : URI.t) : bool =
   | None -> false
   | Some tree -> (
     match Tree.to_evaluated tree with
-    | Some {redirect_uri = Some _; _} -> true
+    | Some {redirect_uri = Some _; _} | Some {hidden = true; _} -> true
     | _ -> false)
 
 let get_sorted_articles (forest : State.t) addrs =

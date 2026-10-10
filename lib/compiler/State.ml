@@ -18,11 +18,6 @@ type resource = T.content T.resource
 type t = {
   env: Eio_unix.Stdenv.base;
   dev: bool;
-  (* When true, locally-authored articles bypass their `redirect` meta
-     entirely and are planted (and thus routed/rendered/output) exactly as
-     if it were absent -- an explicit, per-build opt-in to including
-     otherwise-redirected content, e.g. for a private/local-only build. *)
-  include_private: bool;
   config: Config.t;
   index: Tree.t URI.Tbl.t;
   diagnostics: Reporter.Message.t Asai.Diagnostic.t list URI.Tbl.t;
@@ -38,7 +33,6 @@ type t = {
 }
 
 let make ~(env : Eio_unix.Stdenv.base) ~(config : Config.t) ~(dev : bool)
-    ?(include_private = false)
     ?(graphs = (module Forest_graphs.Make () : Forest_graphs.S))
     ?(import_graph = Forest_graph.create ~size:1000 ())
     ?(resolver = URI.Tbl.create 1000) ?(index = URI.Tbl.create 1000)
@@ -49,7 +43,6 @@ let make ~(env : Eio_unix.Stdenv.base) ~(config : Config.t) ~(dev : bool)
   {
     env;
     dev;
-    include_private;
     config;
     index;
     diagnostics;
@@ -244,18 +237,18 @@ let suggestion_for_uri uri forest =
       | None -> Not_found {suggestion = URI.Tbl.find_opt forest.suggestions uri}
       ))
 
-(* The reserved `\meta{redirect}{<url>}` key: when present on a locally
-   authored article, the article is planted as if it were a foreign,
-   non-routed resource whose canonical URI is the given external target --
-   see `plant_article` below. We deliberately do NOT overwrite
-   `frontmatter.uri` with the redirect target: that field is used both as
-   this resource's index key (`T.uri_for_resource`) and as the scope for all
-   of its own outbound Datalog facts (see `Forest.analyse_resource`), so
-   mutating it would file the tree under the wrong key and corrupt the
-   link-graph's scoping. `redirect_uri` is therefore a separate field on
-   `Tree.evaluated`, consulted only by routing/rendering. *)
-let redirect_meta_key = "redirect"
+(* Meta/tag rules (see `Config.meta_rule` / `Config.tag_rule`).
 
+   A meta whose resolved behaviour is `Redirect`/`Local_redirect` makes the
+   article be planted as if it were a foreign, non-routed resource whose
+   canonical URI is the meta's target -- see `plant_article` below. We
+   deliberately do NOT overwrite `frontmatter.uri` with the redirect target:
+   that field is used both as this resource's index key
+   (`T.uri_for_resource`) and as the scope for all of its own outbound
+   Datalog facts (see `Forest.analyse_resource`), so mutating it would file
+   the tree under the wrong key and corrupt the link-graph's scoping.
+   `redirect_uri` is therefore a separate field on `Tree.evaluated`,
+   consulted only by routing/rendering. *)
 let text_of_simple_content (content : T.content) : string option =
   let rec loop acc = function
     | [] -> Some (String.concat "" (List.rev acc))
@@ -265,33 +258,82 @@ let text_of_simple_content (content : T.content) : string option =
   in
   loop [] (T.extract_content content)
 
-let redirect_uri_of_frontmatter (fm : T.content T.frontmatter) : URI.t option
+let taxon_of_frontmatter (fm : T.content T.frontmatter) : string option =
+  Option.bind fm.taxon text_of_simple_content |> Option.map String.trim
+
+(* Exact `(key, taxon)` rule, then the key's unscoped rule; first match wins,
+   so user rules (listed before the built-in defaults) take precedence. *)
+let meta_behaviour (config : Config.t) ~taxon key : Config.meta_behaviour option
     =
-  match List.assoc_opt redirect_meta_key fm.metas with
-  | None -> None
-  | Some content -> (
-    match text_of_simple_content content with
+  let find p = List.find_opt p config.meta_rules in
+  let scoped =
+    match taxon with
+    | None -> None
+    | Some _ -> find (fun r -> r.Config.key = key && r.taxon = taxon)
+  in
+  match scoped with
+  | Some r -> Some r.behaviour
+  | None ->
+    find (fun r -> r.Config.key = key && r.taxon = None)
+    |> Option.map (fun r -> r.Config.behaviour)
+
+let redirect_target_of_content ~key (content : T.content) : URI.t =
+  let invalid msg =
+    Reporter.fatal Invalid_URI ~extra_remarks:[Asai.Diagnostic.loctext msg]
+  in
+  match text_of_simple_content content with
+  | Some str -> begin
+    match URI.of_string_exn str with
+    | uri -> uri
+    | exception _ ->
+      invalid (Format.asprintf "the `%s` meta is not a valid URL: %s" key str)
+  end
+  | None -> begin
+    (* Rich content such as `[text](https://...)`: use the first link. *)
+    let rec first_link = function
+      | [] -> None
+      | T.Link link :: _ -> Some link.T.href
+      | _ :: rest -> first_link rest
+    in
+    match first_link (T.extract_content content) with
+    | Some uri -> uri
     | None ->
-      Reporter.fatal Invalid_URI
-        ~extra_remarks:
-          [
-            Asai.Diagnostic.loctext
-              "the `redirect` meta must be a simple URL string, not rich \
-               content";
-          ]
-    | Some str -> (
-      match URI.of_string_exn str with
-      | uri -> Some uri
-      | exception _ ->
-        Reporter.fatal Invalid_URI
-          ~extra_remarks:
-            [
-              Asai.Diagnostic.loctextf
-                "the `redirect` meta is not a valid URL: %s" str;
-            ]))
+      invalid
+        (Format.asprintf
+           "the `%s` meta must be a URL, or contain a link such as \
+            [text](url)"
+           key)
+  end
+
+let redirect_uri_of_frontmatter (config : Config.t)
+    (fm : T.content T.frontmatter) : URI.t option =
+  let taxon = taxon_of_frontmatter fm in
+  let@ key, content = List.find_map @~ fm.metas in
+  match meta_behaviour config ~taxon key with
+  | Some (Redirect | Local_redirect) ->
+    Some (redirect_target_of_content ~key content)
+  | Some (External | Self) | None -> None
+
+(* Whether the meta is shown at all: `self` suppresses the annotation. *)
+let meta_is_suppressed (config : Config.t) (fm : T.content T.frontmatter) key =
+  meta_behaviour config ~taxon:(taxon_of_frontmatter fm) key = Some Config.Self
+
+let is_hidden_by_tag (config : Config.t) (fm : T.content T.frontmatter) : bool =
+  let@ vertex = List.exists @~ fm.tags in
+  match vertex with
+  | T.Content_vertex content -> begin
+    match Option.map String.trim (text_of_simple_content content) with
+    | None -> false
+    | Some name ->
+      List.exists
+        (fun (r : Config.tag_rule) ->
+          r.tag = name && r.tag_behaviour = Config.Hide)
+        config.tag_rules
+  end
+  | T.Uri_vertex _ -> false
 
 let plant_resource ?(route_locally = true) ?(include_in_manifest = true)
-    ?(redirect_uri = None) resource forest =
+    ?(redirect_uri = None) ?(hidden = false) resource forest =
   let module Graphs = (val forest.graphs) in
   Forest.analyse_resource forest.graphs resource;
   let@ uri = Option.iter @~ T.uri_for_resource resource in
@@ -316,6 +358,7 @@ let plant_resource ?(route_locally = true) ?(include_in_manifest = true)
           route_locally;
           include_in_manifest;
           redirect_uri;
+          hidden;
         }
   | Some (Tree.Expanded syn) ->
     forest.={uri} <-
@@ -326,6 +369,7 @@ let plant_resource ?(route_locally = true) ?(include_in_manifest = true)
           route_locally;
           include_in_manifest;
           redirect_uri;
+          hidden;
         }
   | _ ->
     forest.={uri} <-
@@ -336,17 +380,23 @@ let plant_resource ?(route_locally = true) ?(include_in_manifest = true)
           route_locally;
           include_in_manifest;
           redirect_uri;
+          hidden;
         }
 
 (* Entry point for planting a locally-authored article (as opposed to a
    foreign/imported resource, which goes through `plant_resource` directly
-   with its own `route_locally`/`include_in_manifest` config). Checks for a
-   `redirect` meta and, if present, plants the article as fully non-local
-   and manifest-excluded, with its redirect target recorded for routing. *)
+   with its own `route_locally`/`include_in_manifest` config). Applies the
+   configured rules: a tag with `behaviour = "hide"` plants the article as
+   non-local, manifest-excluded and `hidden` (so it is also filtered from
+   generated backmatter sections); a meta resolving to a redirect behaviour
+   does the same but records its target for routing. *)
 let plant_article (article : T.content T.article) (forest : t) : unit =
-  if forest.include_private then plant_resource (T.Article article) forest
+  let fm = article.frontmatter in
+  if is_hidden_by_tag forest.config fm then
+    plant_resource ~route_locally:false ~include_in_manifest:false ~hidden:true
+      (T.Article article) forest
   else
-    match redirect_uri_of_frontmatter article.frontmatter with
+    match redirect_uri_of_frontmatter forest.config fm with
     | None -> plant_resource (T.Article article) forest
     | Some target ->
       plant_resource ~route_locally:false ~include_in_manifest:false
