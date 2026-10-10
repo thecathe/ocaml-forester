@@ -310,6 +310,26 @@ let parse lexbuf filename =
       | _ ->
         invalid_value ~where:"forest.directory" "expected a table per directory"
     in
+    (* [forest.new]: author = "<addr>" | ["<addr>", ...] *)
+    let new_authors =
+      match get tbl (forest |-- key "new" |-- table) with
+      | None -> default.new_authors
+      | Some t -> begin
+        match
+          Toml.Types.Table.find_opt (Toml.Types.Table.Key.of_string "author") t
+        with
+        | None -> []
+        | Some (Toml.Types.TString a) ->
+          claim ["forest"; "new"; "author"];
+          [a]
+        | Some (Toml.Types.TArray (Toml.Types.NodeString l)) ->
+          claim ["forest"; "new"; "author"];
+          l
+        | Some _ ->
+          invalid_value ~where:"forest.new"
+            "`author` must be a string or an array of strings"
+      end
+    in
     begin if not (Key_set.is_empty !keys) then
       let keys =
         !keys |> Key_set.to_list
@@ -317,7 +337,7 @@ let parse lexbuf filename =
       in
       Reporter.emit (Uninterpreted_config_options keys)
     end;
-    Config.{url; assets; trees; foreign; home; meta_rules; tag_rules; prefix_rules; directory_rules}
+    Config.{url; assets; trees; foreign; home; meta_rules; tag_rules; prefix_rules; directory_rules; new_authors}
 
 let parse_forest_config_string str =
   let lexbuf = Lexing.from_string str in

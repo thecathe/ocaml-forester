@@ -40,6 +40,9 @@ type t = {
   tag_rules: tag_rule list;
   prefix_rules: prefix_rule list;
   directory_rules: directory_rule list;
+  new_authors: string list;
+      (** Addresses written as `\author{...}` under the date of every tree
+          created by `forester new`. *)
 }
 [@@deriving show]
 
