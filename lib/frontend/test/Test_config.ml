@@ -29,6 +29,7 @@ let test_parsing () =
         meta_rules = default_meta_rules;
         tag_rules = [];
         prefix_rules = [];
+        directory_rules = [];
       }
     begin
       Forester_core.Reporter.easy_run @@ fun () ->
@@ -55,6 +56,7 @@ let test_missing_fields () =
         meta_rules = default_meta_rules;
         tag_rules = [];
         prefix_rules = [];
+        directory_rules = [];
       }
     ( Forester_core.Reporter.easy_run @@ fun () ->
       Config_parser.parse_forest_config_string
@@ -94,6 +96,9 @@ let test_schema () =
 
       [forest.prefix."~"]
       taxon = "Place"
+
+      [forest.directory."trees/papers"]
+      tags = ["paper", "reading"]
       |}
   in
   let open Config in
@@ -116,6 +121,9 @@ let test_schema () =
   Alcotest.(check bool)
     "tag page rule defaults to show" true
     (List.mem {tag = "must-preorder"; tag_behaviour = Show; page = true} c.tag_rules);
+  Alcotest.(check bool)
+    "directory tag mask" true
+    (c.directory_rules = [{dir = "trees/papers"; dir_tags = ["paper"; "reading"]}]);
   Alcotest.(check bool)
     "prefix rules" true
     (List.mem {prefix = '#'; prefix_taxon = "Thing"} c.prefix_rules
