@@ -312,11 +312,7 @@ let redirect_uri_of_frontmatter (config : Config.t)
   match meta_behaviour config ~taxon key with
   | Some (Redirect | Local_redirect) ->
     Some (redirect_target_of_content ~key content)
-  | Some (External | Self) | None -> None
-
-(* Whether the meta is shown at all: `self` suppresses the annotation. *)
-let meta_is_suppressed (config : Config.t) (fm : T.content T.frontmatter) key =
-  meta_behaviour config ~taxon:(taxon_of_frontmatter fm) key = Some Config.Self
+  | Some External | None -> None
 
 let is_hidden_by_tag (config : Config.t) (fm : T.content T.frontmatter) : bool =
   let@ vertex = List.exists @~ fm.tags in

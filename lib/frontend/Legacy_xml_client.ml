@@ -161,13 +161,7 @@ and render_frontmatter ~env (frontmatter : T.content T.frontmatter) : P.node =
         | None -> X.null []
         | Some taxon -> X.taxon [] @@ render_content ~env taxon
         end;
-        X.null
-        @@ List.filter_map
-             (fun ((key, _) as meta) ->
-               if State.meta_is_suppressed env.forest.config frontmatter key
-               then None
-               else Some (render_meta ~env meta))
-             frontmatter.metas;
+        X.null @@ List.map (render_meta ~env) frontmatter.metas;
         render_tags ~env frontmatter;
       ]
   in

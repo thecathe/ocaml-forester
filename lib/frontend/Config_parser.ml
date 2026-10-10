@@ -89,8 +89,7 @@ let parse_prefix_char name =
 let parse_meta_behaviour ~where = function
   | "redirect" -> Config.Redirect
   | "local-redirect" -> Config.Local_redirect
-  | "external" -> Config.External
-  | "self" -> Config.Self
+  | "external" | "self" -> Config.External
   | other ->
     Reporter.fatal Configuration_error
       ~extra_remarks:

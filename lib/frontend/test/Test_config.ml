@@ -80,6 +80,9 @@ let test_schema () =
       [forest.meta.redirect]
       behaviour = "local-redirect"
 
+      [forest.meta.homepage]
+      behaviour = "self"
+
       [forest.tag.private]
       behaviour = "hide"
 
@@ -101,6 +104,9 @@ let test_schema () =
   Alcotest.(check bool)
     "unscoped meta rule" true
     (List.mem {key = "redirect"; taxon = None; behaviour = Local_redirect} c.meta_rules);
+  Alcotest.(check bool)
+    "\"self\" is an alias of external" true
+    (List.mem {key = "homepage"; taxon = None; behaviour = External} c.meta_rules);
   Alcotest.(check bool)
     "built-in external default kept" true
     (List.mem {key = "external"; taxon = None; behaviour = External} c.meta_rules);

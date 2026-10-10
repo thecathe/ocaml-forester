@@ -9,9 +9,10 @@ type foreign = {path: string; route_locally: bool; include_in_manifest: bool}
 
 (* How a `\meta{<key>}{...}` entry is treated, optionally scoped to a taxon.
    [Redirect]/[Local_redirect] plant the article as non-local, pointing
-   inbound links at the meta's target; [External]/[Self] keep it a normal
-   article, with [Self] additionally suppressing the meta's own annotation. *)
-type meta_behaviour = Redirect | Local_redirect | External | Self
+   inbound links at the meta's target; [External] keeps it a normal article
+   and shows the meta as an external link. The config name "self" is an alias
+   of [External]. *)
+type meta_behaviour = Redirect | Local_redirect | External
 [@@deriving show, repr]
 
 type meta_rule = {

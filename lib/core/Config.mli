@@ -7,7 +7,7 @@
 type foreign = {path: string; route_locally: bool; include_in_manifest: bool}
 [@@deriving show]
 
-type meta_behaviour = Redirect | Local_redirect | External | Self
+type meta_behaviour = Redirect | Local_redirect | External
 [@@deriving show]
 
 type meta_rule = {
