@@ -51,6 +51,7 @@ type t =
       kind: string;
       tags: string list;
       source: string option;
+      from: string option;
     }
   | IO_error
   | Log
@@ -238,10 +239,11 @@ let default_text : t -> Asai.Diagnostic.text = function
         "Potentially broken link to `%a`; did you mean `%a`?" URI.pp uri URI.pp
         suggestion
   end
-  | Reference_to_hidden_tree {uri; kind; tags; source} ->
+  | Reference_to_hidden_tree {uri; kind; tags; source; from} ->
     Asai.Diagnostic.textf
-      "This tree %s hidden tree `%a`%s (hidden by tag%s %s); %s will appear \
+      "%s %s hidden tree `%a`%s, which is hidden by tag%s %s; %s will appear \
        in the public output."
+      (match from with None -> "This tree" | Some path -> path)
       kind URI.pp uri
       (match source with None -> "" | Some path -> " (" ^ path ^ ")")
       (if List.length tags = 1 then "" else "s")
