@@ -51,6 +51,7 @@ let render ~forest expanded =
                   route_locally = true;
                   include_in_manifest = true;
                   redirect_uri = None;
+                  hidden = false;
                 })
           articles
       in

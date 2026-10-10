@@ -137,7 +137,7 @@ and render_frontmatter ~env (frontmatter : T.content T.frontmatter) : P.node =
           frontmatter.uri;
         X.optional (X.route [] "%s")
         @@ Option.map
-             (Fun.compose URI.to_string (route env.forest))
+             (Fun.compose URI.href_string (route env.forest))
              frontmatter.uri;
         begin match frontmatter.title with
         | None -> X.null []
@@ -157,7 +157,13 @@ and render_frontmatter ~env (frontmatter : T.content T.frontmatter) : P.node =
         | None -> X.null []
         | Some taxon -> X.taxon [] @@ render_content ~env taxon
         end;
-        X.null @@ List.map (render_meta ~env) frontmatter.metas;
+        X.null
+        @@ List.filter_map
+             (fun ((key, _) as meta) ->
+               if State.meta_is_suppressed env.forest.config frontmatter key
+               then None
+               else Some (render_meta ~env meta))
+             frontmatter.metas;
       ]
   in
   result
@@ -181,7 +187,7 @@ and render_content_node ~env (node : 'a T.content_node) : P.node list =
   | CDATA str -> [P.txt ~raw:true "<![CDATA[%s]]>" str]
   | Uri uri ->
     [P.txt "%s" (URI.display_path_string ~base:env.forest.config.url uri)]
-  | Route_of_uri uri -> [P.txt "%s" (URI.to_string (route env.forest uri))]
+  | Route_of_uri uri -> [P.txt "%s" (URI.href_string (route env.forest uri))]
   | Xml_elt elt ->
     let xmlns_attrs = Xmlns.xmlns_attrs_for_elt elt env.xmlns in
     let env = {env with xmlns = Xmlns.extend xmlns_attrs env.xmlns} in
@@ -287,7 +293,7 @@ and render_link ~env (link : T.content T.link) : P.node list =
           @@ Broken_link {uri = link.href; suggestion}
       end;
       [
-        X.href "%s" @@ URI.to_string @@ route env.forest link.href;
+        X.href "%s" @@ URI.href_string @@ route env.forest link.href;
         X.type_ "external";
       ]
     | Some article ->
@@ -297,7 +303,7 @@ and render_link ~env (link : T.content T.link) : P.node list =
         | None -> article.frontmatter.uri
       in
       [
-        X.href "%s" @@ URI.to_string @@ route env.forest link.href;
+        X.href "%s" @@ URI.href_string @@ route env.forest link.href;
         X.title_ "%s"
         @@ Plain_text_client.string_of_content ~forest:env.forest
              ~router:(route env.forest)
@@ -346,7 +352,7 @@ and render_date ~env (date : Human_datetime.t) =
     let uri = URI_scheme.named_uri ~base:config.url str in
     match State.get_article uri env.forest with
     | None -> X.null_
-    | Some _ -> X.href "%s" @@ URI.to_string @@ route env.forest uri
+    | Some _ -> X.href "%s" @@ URI.href_string @@ route env.forest uri
   in
   X.date [href_attr]
     [

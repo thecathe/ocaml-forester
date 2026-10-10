@@ -39,6 +39,85 @@ let keys (tbl : Toml.Types.value Toml.Types.Table.t) =
   in
   Key_set.of_list @@ List.map List.rev @@ go [] [] tbl
 
+
+(* Punctuation that may NOT be used as an address prefix, because it is
+   syntactically meaningful in tree markup or addresses (or in URLs in a way
+   that cannot be made safe), so using it would silently misbehave. Every
+   other ASCII punctuation character is accepted; the ones that are unsafe in
+   a URL path (`#`, `?`) are percent-encoded when hrefs are emitted. *)
+let vetoed_prefixes =
+  [
+    ('/', "path separator"); ('\\', "markup escape"); ('{', "markup"); ('}', "markup");
+    ('[', "markup"); (']', "markup"); ('(', "markup"); (')', "markup");
+    ('%', "comment / percent-escape"); ('\'', "datalog constant"); ('"', "quoting");
+    ('`', "quoting"); ('<', "URL-unsafe"); ('>', "URL-unsafe"); ('|', "URL-unsafe");
+    ('^', "URL-unsafe"); (':', "URI scheme separator");
+    ('.', "extension / hidden-file marker"); ('-', "address key separator");
+  ]
+
+let is_ascii_punctuation c =
+  match c with
+  | '!' .. '/' | ':' .. '@' | '[' .. '`' | '{' .. '~' -> true
+  | _ -> false
+
+(* [Key.to_string] re-quotes keys that are not valid bare TOML keys. *)
+let key_name k =
+  let s = Toml.Types.Table.Key.to_string k in
+  let n = String.length s in
+  if n >= 2 && s.[0] = '"' && s.[n - 1] = '"' then String.sub s 1 (n - 2) else s
+
+let parse_prefix_char name =
+  let fail reason =
+    Reporter.fatal Configuration_error
+      ~extra_remarks:
+        [
+          Asai.Diagnostic.loctextf
+            "Invalid prefix %S in `[forest.prefix]`: %s." name reason;
+        ]
+  in
+  if String.length name <> 1 then
+    fail "a prefix must be exactly one ASCII punctuation character"
+  else
+    let c = name.[0] in
+    if not (is_ascii_punctuation c) then
+      fail "a prefix must be an ASCII punctuation character"
+    else
+      match List.assoc_opt c vetoed_prefixes with
+      | Some why -> fail (Printf.sprintf "%C is not allowed (%s)" c why)
+      | None -> c
+
+let parse_meta_behaviour ~where = function
+  | "redirect" -> Config.Redirect
+  | "local-redirect" -> Config.Local_redirect
+  | "external" -> Config.External
+  | "self" -> Config.Self
+  | other ->
+    Reporter.fatal Configuration_error
+      ~extra_remarks:
+        [
+          Asai.Diagnostic.loctextf
+            "Unknown behaviour %S in `[%s]`; expected one of \"redirect\", \
+             \"local-redirect\", \"external\", \"self\"."
+            other where;
+        ]
+
+let parse_tag_behaviour ~where = function
+  | "hide" -> Config.Hide
+  | "show" -> Config.Show
+  | other ->
+    Reporter.fatal Configuration_error
+      ~extra_remarks:
+        [
+          Asai.Diagnostic.loctextf
+            "Unknown behaviour %S in `[%s]`; expected \"hide\" or \"show\"."
+            other where;
+        ]
+
+let invalid_value ~where what =
+  Reporter.fatal Configuration_error
+    ~extra_remarks:
+      [Asai.Diagnostic.loctextf "Invalid value in `[%s]`: %s." where what]
+
 let parse lexbuf filename =
   let@ () = Reporter.easy_run in
   match Toml.Parser.parse lexbuf filename with
@@ -115,6 +194,101 @@ let parse lexbuf filename =
       URI_scheme.named_uri ~base:url
       @@ with_default ~value:"index" k (forest |-- key "home" |-- string)
     in
+    let sub_table ~k =
+      match get tbl (forest |-- key k |-- table) with
+      | None -> []
+      | Some t -> Toml.Types.Table.to_list t
+    in
+    let claim path = keys := Key_set.remove path !keys in
+    let string_field ~where t name =
+      match Toml.Types.Table.find_opt (Toml.Types.Table.Key.of_string name) t with
+      | None -> None
+      | Some (Toml.Types.TString s) -> Some s
+      | Some _ -> invalid_value ~where (Printf.sprintf "`%s` must be a string" name)
+    in
+    let bool_field ~where t name =
+      match Toml.Types.Table.find_opt (Toml.Types.Table.Key.of_string name) t with
+      | None -> None
+      | Some (Toml.Types.TBool b) -> Some b
+      | Some _ -> invalid_value ~where (Printf.sprintf "`%s` must be a boolean" name)
+    in
+    (* [forest.meta.<key>] (unscoped) and [forest.meta.<key>.<Taxon>] *)
+    let meta_rules =
+      let user =
+        let@ k, v = List.concat_map @~ sub_table ~k:"meta" in
+        let key = key_name k in
+        match v with
+        | Toml.Types.TTable t ->
+          let where = "forest.meta." ^ key in
+          let unscoped =
+            match string_field ~where t "behaviour" with
+            | None -> []
+            | Some b ->
+              claim ["forest"; "meta"; key; "behaviour"];
+              [Config.{key; taxon = None; behaviour = parse_meta_behaviour ~where b}]
+          in
+          let scoped =
+            let@ sk, sv = List.filter_map @~ Toml.Types.Table.to_list t in
+            let taxon = key_name sk in
+            match sv with
+            | Toml.Types.TTable st ->
+              let where = where ^ "." ^ taxon in
+              begin match string_field ~where st "behaviour" with
+              | None ->
+                invalid_value ~where "missing required `behaviour`"
+              | Some b ->
+                claim ["forest"; "meta"; key; taxon; "behaviour"];
+                Some
+                  Config.
+                    {key; taxon = Some taxon; behaviour = parse_meta_behaviour ~where b}
+              end
+            | _ -> None
+          in
+          unscoped @ scoped
+        | _ -> invalid_value ~where:"forest.meta" "expected a table per meta key"
+      in
+      user @ default.meta_rules
+    in
+    (* [forest.tag.<name>]: behaviour = "hide" | "show"; page = true | false *)
+    let tag_rules =
+      let@ k, v = List.map @~ sub_table ~k:"tag" in
+      let tag = key_name k in
+      let where = "forest.tag." ^ tag in
+      match v with
+      | Toml.Types.TTable t ->
+        let tag_behaviour =
+          match string_field ~where t "behaviour" with
+          | None -> Config.Show
+          | Some b ->
+            claim ["forest"; "tag"; tag; "behaviour"];
+            parse_tag_behaviour ~where b
+        in
+        let page =
+          match bool_field ~where t "page" with
+          | None -> false
+          | Some b ->
+            claim ["forest"; "tag"; tag; "page"];
+            b
+        in
+        Config.{tag; tag_behaviour; page}
+      | _ -> invalid_value ~where:"forest.tag" "expected a table per tag"
+    in
+    (* [forest.prefix."<punct>"]: taxon = "<Taxon>" *)
+    let prefix_rules =
+      let@ k, v = List.map @~ sub_table ~k:"prefix" in
+      let name = key_name k in
+      let prefix = parse_prefix_char name in
+      let where = Printf.sprintf "forest.prefix.%S" name in
+      match v with
+      | Toml.Types.TTable t -> begin
+        match string_field ~where t "taxon" with
+        | None -> invalid_value ~where "missing required `taxon`"
+        | Some prefix_taxon ->
+          claim ["forest"; "prefix"; name; "taxon"];
+          Config.{prefix; prefix_taxon}
+      end
+      | _ -> invalid_value ~where:"forest.prefix" "expected a table per prefix"
+    in
     begin if not (Key_set.is_empty !keys) then
       let keys =
         !keys |> Key_set.to_list
@@ -122,7 +296,7 @@ let parse lexbuf filename =
       in
       Reporter.emit (Uninterpreted_config_options keys)
     end;
-    Config.{url; assets; trees; foreign; home}
+    Config.{url; assets; trees; foreign; home; meta_rules; tag_rules; prefix_rules}
 
 let parse_forest_config_string str =
   let lexbuf = Lexing.from_string str in

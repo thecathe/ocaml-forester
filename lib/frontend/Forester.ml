@@ -132,8 +132,11 @@ let outputs_for_article ~(forest : State.t) (article : _ T.article) =
         article
     in
     let html_content =
-      html_redirect @@ String.concat "/"
-      @@ ("" :: Legacy_xml_client.local_path_components forest.config xml_route)
+      html_redirect @@ URI.href_string
+      @@ URI.make
+           ~path:
+             ("" :: Legacy_xml_client.local_path_components forest.config xml_route)
+           ()
     in
     [(xml_route, xml_content); (html_route, html_content)]
 

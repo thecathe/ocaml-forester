@@ -38,7 +38,7 @@ let render_tree ~dev ~(forest : State.t) (doc : T.content T.article) :
         `String (PT.string_of_content ~forest content)
       end
   in
-  let route = `String (URI.to_string route) in
+  let route = `String (URI.href_string route) in
   let metas =
     let meta_string meta = String.trim @@ PT.string_of_content ~forest meta in
     let meta_assoc (s, meta) = (s, `String (meta_string meta)) in

@@ -50,6 +50,7 @@ let () =
          route_locally = true;
          include_in_manifest = true;
          redirect_uri = None;
+         hidden = false;
        };
   let forest = {(State.make ~env ~config ~dev:false ()) with index} in
   let print_transclusion : T.transclusion -> unit =
