@@ -30,6 +30,8 @@ type prefix_rule = {prefix: char; prefix_taxon: string} [@@deriving show]
 
 type directory_rule = {dir: string; dir_tags: string list} [@@deriving show]
 
+type taxon_rule = {taxon_name: string; taxon_page: bool} [@@deriving show]
+
 type t = {
   trees: string list;
   assets: string list;
@@ -43,6 +45,7 @@ type t = {
   new_authors: string list;
       (** Addresses written as `\author{...}` under the date of every tree
           created by `forester new`. *)
+  taxon_rules: taxon_rule list;
 }
 [@@deriving show]
 
@@ -56,3 +59,7 @@ val home_uri : t -> URI.t
 val tag_page_address : string -> string
 (** [tag_page_address "must-preorder"] is ["tag-must-preorder"]: the address of
     the generated page for a tag with [page = true]. *)
+
+val taxon_page_address : string -> string
+(** [taxon_page_address "Person"] is ["taxon-person"]: the address of the
+    generated page for a taxon. *)

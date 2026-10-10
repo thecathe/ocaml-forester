@@ -427,6 +427,28 @@ let test_new_tree_author ~env () =
         Alcotest.(check string) "second author follows" "\\author{@cathe}" a2
       | _ -> Alcotest.fail ("unexpected content: " ^ content))
 
+let test_taxon_links_to_page ~env () =
+  let raw_trees =
+    [
+      {path = "a.tree"; content = {|\title{A}\taxon{Person}|}};
+      {path = "b.tree"; content = {|\title{B}\taxon{Idea}|}};
+      {path = "taxon-person.tree"; content = {|\title{Person}\taxon{Taxon}|}};
+    ]
+  in
+  with_forest ~raw_trees ~env (fun forest ->
+      let render name =
+        match State.get_article (URI_scheme.named_uri ~base:config.url name) forest with
+        | Some a ->
+          Format.asprintf "%a" (Legacy_xml_client.pp_xml ~forest ?stylesheet:None) a
+        | None -> Alcotest.fail (name ^ " not found")
+      in
+      Alcotest.(check bool)
+        "taxon with a generated page links to it" true
+        (contains_substring ~needle:{|taxon href="/taxon-person/"|} (render "a"));
+      Alcotest.(check bool)
+        "taxon without a page has no href" false
+        (contains_substring ~needle:{|taxon href|} (render "b")))
+
 let () =
   let@ env = Eio_main.run in
   Logs.set_level (Some Debug);
@@ -452,6 +474,8 @@ let () =
           test_case "hide excluded from backlinks" `Quick
             (test_tag_hide_excluded_from_backlinks ~env);
           test_case "show is a no-op" `Quick (test_tag_show_is_default ~env);
+          test_case "taxon links to its generated page" `Quick
+            (test_taxon_links_to_page ~env);
           test_case "new trees get configured authors below the date" `Quick
             (test_new_tree_author ~env);
           test_case "directory rule masks tags onto trees" `Quick

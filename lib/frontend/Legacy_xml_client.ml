@@ -159,7 +159,21 @@ and render_frontmatter ~env (frontmatter : T.content T.frontmatter) : P.node =
         end;
         begin match frontmatter.taxon with
         | None -> X.null []
-        | Some taxon -> X.taxon [] @@ render_content ~env taxon
+        | Some taxon ->
+          (* Link the taxon to its generated page, when that exists. *)
+          let href =
+            let@ name =
+              Option.bind (State.text_of_simple_content taxon)
+            in
+            let uri =
+              URI_scheme.named_uri ~base:env.forest.config.url
+                (Config.taxon_page_address (String.trim name))
+            in
+            Option.map
+              (fun _ -> X.href "%s" @@ URI.href_string @@ route env.forest uri)
+              (State.get_article uri env.forest)
+          in
+          X.taxon (Option.to_list href) @@ render_content ~env taxon
         end;
         X.null @@ List.map (render_meta ~env) frontmatter.metas;
         render_tags ~env frontmatter;

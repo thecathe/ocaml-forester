@@ -31,6 +31,7 @@ let test_parsing () =
         prefix_rules = [];
         directory_rules = [];
         new_authors = [];
+        taxon_rules = [];
       }
     begin
       Forester_core.Reporter.easy_run @@ fun () ->
@@ -59,6 +60,7 @@ let test_missing_fields () =
         prefix_rules = [];
         directory_rules = [];
         new_authors = [];
+        taxon_rules = [];
       }
     ( Forester_core.Reporter.easy_run @@ fun () ->
       Config_parser.parse_forest_config_string
@@ -99,6 +101,9 @@ let test_schema () =
       [forest.prefix."~"]
       taxon = "Place"
 
+      [forest.taxon.Person]
+      page = false
+
       [forest.new]
       author = ["@jpears", "@cathe"]
 
@@ -126,6 +131,9 @@ let test_schema () =
   Alcotest.(check bool)
     "tag page rule defaults to show" true
     (List.mem {tag = "must-preorder"; tag_behaviour = Show; page = true} c.tag_rules);
+  Alcotest.(check bool)
+    "taxon page opt-out" true
+    (c.taxon_rules = [{taxon_name = "Person"; taxon_page = false}]);
   Alcotest.(check (list string))
     "new-tree authors" ["@jpears"; "@cathe"] c.new_authors;
   Alcotest.(check bool)
