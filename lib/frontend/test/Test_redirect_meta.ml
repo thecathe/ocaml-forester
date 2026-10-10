@@ -348,6 +348,40 @@ let test_hidden_reference_warning ~env () =
         "no warning for a page that references no hidden tree" 0
         (List.length (render_collecting_warnings ~forest (article "clean"))))
 
+let test_json_blob_excludes_hidden ~env () =
+  let raw_trees =
+    [
+      {path = "priv.tree"; content = {|\title{SecretTitle}\tag{note}\tag{private}|}};
+      {path = "pub.tree"; content = {|\title{PublicTitle}\tag{note}|}};
+      {
+        path = "blobs.tree";
+        content =
+          {|\title{Blobs}\syndicate-query-as-json-blob{notes}{\datalog{?X -: {\rel/has-tag ?X '{note}}}}|};
+      };
+    ]
+  in
+  with_forest ~config:hide_config ~raw_trees ~env (fun forest ->
+      Forester.render_forest ~dev:false ~forest;
+      let path = "output/notes/index.json" in
+      let candidates =
+        List.filter Sys.file_exists
+          [path; "output/notes"; "output/notes.json"]
+      in
+      let file =
+        match candidates with
+        | f :: _ when not (Sys.is_directory f) -> f
+        | _ -> Alcotest.fail "blob output not found"
+      in
+      let ic = open_in file in
+      let content = really_input_string ic (in_channel_length ic) in
+      close_in ic;
+      Alcotest.(check bool)
+        "public tree is in the blob" true
+        (contains_substring ~needle:"PublicTitle" content);
+      Alcotest.(check bool)
+        "hidden tree is not in the blob" false
+        (contains_substring ~needle:"SecretTitle" content))
+
 let () =
   let@ env = Eio_main.run in
   Logs.set_level (Some Debug);
@@ -373,6 +407,8 @@ let () =
           test_case "hide excluded from backlinks" `Quick
             (test_tag_hide_excluded_from_backlinks ~env);
           test_case "show is a no-op" `Quick (test_tag_show_is_default ~env);
+          test_case "json blob syndication excludes hidden trees" `Quick
+            (test_json_blob_excludes_hidden ~env);
           test_case "warns on links/transclusions of hidden trees" `Quick
             (test_hidden_reference_warning ~env);
           test_case "tags emitted, linked to existing pages" `Quick

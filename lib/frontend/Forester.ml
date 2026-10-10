@@ -152,7 +152,11 @@ let outputs_for_json_blob_syndication ~(forest : State.t)
       let@ vertex = List.filter_map @~ Vertex_set.elements vertices in
       match vertex with
       | Content_vertex _ -> None
-      | Uri_vertex uri -> State.get_resource forest uri
+      | Uri_vertex uri ->
+        (* Same rule as the generated backmatter sections: a hidden or
+           redirect-flagged tree must not surface through a query. *)
+        if Forest_util.is_redirect_flagged forest uri then None
+        else State.get_resource forest uri
     in
     let json_content =
       Repr.to_json_string ~minify:true (T.forest_t T.content_t) resources
