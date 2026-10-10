@@ -295,6 +295,59 @@ let test_tags_emitted_with_page_links ~env () =
         (contains_substring ~needle:{|name="plain"|} rendered
          && not (contains_substring ~needle:{|name="plain" href|} rendered)))
 
+let render_collecting_warnings ~forest article =
+  let warnings = ref [] in
+  Reporter.run
+    ~emit:(fun d -> warnings := d :: !warnings)
+    ~fatal:(fun _ -> ())
+    (fun () ->
+      ignore
+        (Format.asprintf "%a"
+           (Legacy_xml_client.pp_xml ~forest ?stylesheet:None)
+           article));
+  List.filter
+    (fun (d : _ Asai.Diagnostic.t) ->
+      match d.message with
+      | Reporter.Message.Reference_to_hidden_tree _ -> true
+      | _ -> false)
+    !warnings
+
+let test_hidden_reference_warning ~env () =
+  let raw_trees =
+    [
+      {path = "priv.tree"; content = {|\title{Priv}\tag{private}|}};
+      {
+        path = "linker.tree";
+        content = {|\title{Linker}\p{[Priv](priv)}\transclude{priv}|};
+      };
+      {path = "clean.tree"; content = {|\title{Clean}\p{nothing hidden}|}};
+    ]
+  in
+  with_forest ~config:hide_config ~raw_trees ~env (fun forest ->
+      let article name =
+        match
+          State.get_article (URI_scheme.named_uri ~base:config.url name) forest
+        with
+        | Some a -> a
+        | None -> Alcotest.fail (name ^ " not found")
+      in
+      let kinds =
+        render_collecting_warnings ~forest (article "linker")
+        |> List.filter_map (fun (d : _ Asai.Diagnostic.t) ->
+               match d.message with
+               | Reporter.Message.Reference_to_hidden_tree {kind; tags; _} ->
+                 Some (kind, tags)
+               | _ -> None)
+        |> List.sort compare
+      in
+      Alcotest.(check (list (pair string (list string))))
+        "one warning for the link and one for the transclusion, naming the tag"
+        [("links to", ["private"]); ("transcludes", ["private"])]
+        kinds;
+      Alcotest.(check int)
+        "no warning for a page that references no hidden tree" 0
+        (List.length (render_collecting_warnings ~forest (article "clean"))))
+
 let () =
   let@ env = Eio_main.run in
   Logs.set_level (Some Debug);
@@ -320,6 +373,8 @@ let () =
           test_case "hide excluded from backlinks" `Quick
             (test_tag_hide_excluded_from_backlinks ~env);
           test_case "show is a no-op" `Quick (test_tag_show_is_default ~env);
+          test_case "warns on links/transclusions of hidden trees" `Quick
+            (test_hidden_reference_warning ~env);
           test_case "tags emitted, linked to existing pages" `Quick
             (test_tags_emitted_with_page_links ~env);
         ] );

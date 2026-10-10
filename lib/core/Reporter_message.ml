@@ -46,6 +46,12 @@ type t =
   | External_error
   | Resource_not_found of URI.t
   | Broken_link of {uri: URI.t; suggestion: URI.t option}
+  | Reference_to_hidden_tree of {
+      uri: URI.t;
+      kind: string;
+      tags: string list;
+      source: string option;
+    }
   | IO_error
   | Log
   | Missing_argument
@@ -81,6 +87,7 @@ let default_severity : t -> Asai.Diagnostic.severity = function
   | Log -> Info
   | Resource_not_found _ -> Error
   | Broken_link _ -> Warning
+  | Reference_to_hidden_tree _ -> Warning
   | IO_error -> Error
   | Missing_argument -> Error
   | Uninterpreted_config_options _ -> Warning
@@ -116,6 +123,7 @@ let short_code : t -> string = function
   | External_error -> "external_error"
   | Resource_not_found _ -> "resource_not_found"
   | Broken_link _ -> "broken_link"
+  | Reference_to_hidden_tree _ -> "reference_to_hidden_tree"
   | IO_error -> "io_error"
   | Log -> "log"
   | Missing_argument -> "missing_argument"
@@ -230,6 +238,15 @@ let default_text : t -> Asai.Diagnostic.text = function
         "Potentially broken link to `%a`; did you mean `%a`?" URI.pp uri URI.pp
         suggestion
   end
+  | Reference_to_hidden_tree {uri; kind; tags; source} ->
+    Asai.Diagnostic.textf
+      "This tree %s hidden tree `%a`%s (hidden by tag%s %s); %s will appear \
+       in the public output."
+      kind URI.pp uri
+      (match source with None -> "" | Some path -> " (" ^ path ^ ")")
+      (if List.length tags = 1 then "" else "s")
+      (String.concat ", " tags)
+      (if kind = "transcludes" then "its content" else "its title and address")
   | Resource_not_found uri ->
     Asai.Diagnostic.textf "Resource not found: %a" URI.pp uri
   | Duplicate_tree (o1, o2) ->

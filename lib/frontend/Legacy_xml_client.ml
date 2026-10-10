@@ -48,6 +48,10 @@ type env = {
   xmlns: Xmlns.t;
 }
 
+(* Reported once per (referring page, hidden target, kind) per build. *)
+let reported_hidden_references : (URI.t option * URI.t * string, unit) Hashtbl.t =
+  Hashtbl.create 16
+
 let range ~env =
   let@ uri = Option.bind env.uri in
   let@ path = Option.map @~ State.source_path_of_uri uri env.forest in
@@ -298,13 +302,39 @@ and render_resource_source source =
     [X.type_ "%s" source.type_; X.resource_part "%s" source.part]
     "<![CDATA[%s]]>" source.source
 
+(* A public page that links to or transcludes a tree hidden by a `hide` tag
+   still gets built (that is allowed), but it leaks the hidden tree's title
+   or content, so say so loudly. Not reported inside generated backmatter,
+   which already filters hidden trees. *)
+and warn_if_hidden_reference ~env ~kind uri =
+  let rendering_hidden_tree =
+    match env.uri with
+    | Some current -> Option.is_some (State.hide_tags_of_uri env.forest current)
+    | None -> false
+  in
+  if (not env.in_backmatter) && not rendering_hidden_tree then
+    match State.hide_tags_of_uri env.forest uri with
+    | None -> ()
+    | Some tags ->
+      let key = (env.uri, uri, kind) in
+      if not (Hashtbl.mem reported_hidden_references key) then begin
+        Hashtbl.add reported_hidden_references key ();
+        let source =
+          Option.map Fun.id (State.source_path_of_uri uri env.forest)
+        in
+        Reporter.emit ?loc:(range ~env)
+          (Reference_to_hidden_tree {uri; kind; tags; source})
+      end
+
 and render_transclusion ~env (transclusion : T.transclusion) : P.node list =
+  warn_if_hidden_reference ~env ~kind:"transcludes" transclusion.href;
   match State.get_content_of_transclusion transclusion env.forest with
   | None ->
     Reporter.fatal ?loc:(range ~env) (Resource_not_found transclusion.href)
   | Some content -> render_content ~env content
 
 and render_link ~env (link : T.content T.link) : P.node list =
+  warn_if_hidden_reference ~env ~kind:"links to" link.href;
   let article_opt = State.get_article link.href env.forest in
   (* A redirect-flagged local tree is still a known article (`article_opt`
      is `Some`), but it must be rendered exactly like a genuine external

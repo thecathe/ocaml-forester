@@ -402,6 +402,31 @@ let plant_article (article : T.content T.article) (forest : t) : unit =
       plant_resource ~route_locally:false ~include_in_manifest:false
         ~redirect_uri:(Some target) (T.Article article) forest
 
+(* If `uri` is a tree hidden by a `hide` tag, the matching tag names. *)
+let hide_tags_of_uri (forest : t) uri : string list option =
+  match forest.={uri} with
+  | None -> None
+  | Some tree -> (
+    match Tree.to_evaluated tree, to_article tree with
+    | Some {hidden = true; _}, Some article ->
+      let names =
+        let@ vertex = List.filter_map @~ article.frontmatter.tags in
+        match vertex with
+        | T.Content_vertex content ->
+          let@ name = Option.bind (text_of_simple_content content) in
+          let name = String.trim name in
+          if
+            List.exists
+              (fun (r : Config.tag_rule) ->
+                r.tag = name && r.tag_behaviour = Config.Hide)
+              forest.config.tag_rules
+          then Some name
+          else None
+        | T.Uri_vertex _ -> None
+      in
+      Some names
+    | _ -> None)
+
 let serialize_graphs : (module Forest_graphs.S) -> 'a =
  fun s ->
   let module Graphs = (val s) in
