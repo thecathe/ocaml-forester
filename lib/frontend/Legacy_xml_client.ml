@@ -319,11 +319,21 @@ and warn_if_hidden_reference ~env ~kind uri =
       let key = (env.uri, uri, kind) in
       if not (Hashtbl.mem reported_hidden_references key) then begin
         Hashtbl.add reported_hidden_references key ();
-        let source =
-          Option.map Fun.id (State.source_path_of_uri uri env.forest)
+        let path_of uri =
+          (* `resolver` maps every loaded tree to its native path. *)
+          match URI.Tbl.find_opt env.forest.resolver uri with
+          | Some path -> Some path
+          | None -> State.source_path_of_uri uri env.forest
         in
         Reporter.emit ?loc:(range ~env)
-          (Reference_to_hidden_tree {uri; kind; tags; source})
+          (Reference_to_hidden_tree
+             {
+               uri;
+               kind;
+               tags;
+               source = path_of uri;
+               from = Option.bind env.uri path_of;
+             })
       end
 
 and render_transclusion ~env (transclusion : T.transclusion) : P.node list =
