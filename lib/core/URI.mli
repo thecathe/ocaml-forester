@@ -32,6 +32,10 @@ val make :
 val t : t Repr.t
 val pp : Format.formatter -> t -> unit
 val to_string : t -> string
+
+val href_string : t -> string
+(** Like {!to_string}, but keeps percent-encoding; use when the result is
+    emitted as a URL (href) rather than displayed. *)
 val of_string_exn : string -> t
 
 module Set : Set.S with type elt = t

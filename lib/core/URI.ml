@@ -58,6 +58,11 @@ module Basics = struct
     Format.fprintf fmt "%s" @@ Uri.pct_decode @@ Uri.to_string @@ hydrate uri
 
   let to_string x = Uri.pct_decode @@ Uri.to_string @@ hydrate x
+
+  (* Unlike [to_string], keeps percent-encoding, so that characters which are
+     meaningful in a URL (e.g. a `#` or `?` in a tree address) survive as part
+     of the path when emitted as an href rather than starting a fragment/query. *)
+  let href_string x = Uri.to_string @@ hydrate x
   let t = Repr.map Repr.string (Fun.compose dehydrate Uri.of_string) to_string
   let of_string_exn str = dehydrate @@ Uri.canonicalize @@ Uri.of_string str
 
