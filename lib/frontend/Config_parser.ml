@@ -219,6 +219,11 @@ let parse lexbuf filename =
         match v with
         | Toml.Types.TTable t ->
           let where = "forest.meta." ^ key in
+          (* `page` is read by the forest generator script, not by forester;
+             claim it so it is not reported as an uninterpreted option. *)
+          Option.iter
+            (fun _ -> claim ["forest"; "meta"; key; "page"])
+            (bool_field ~where t "page");
           let unscoped =
             match string_field ~where t "behaviour" with
             | None -> []
