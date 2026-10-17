@@ -30,7 +30,15 @@ type prefix_rule = {prefix: char; prefix_taxon: string} [@@deriving show]
 
 type directory_rule = {dir: string; dir_tags: string list} [@@deriving show]
 
-type taxon_rule = {taxon_name: string; taxon_page: bool} [@@deriving show]
+type taxon_rule = {
+  taxon_name: string;
+  taxon_page: bool;
+  taxon_unpublished: bool;
+      (** [unpublished = true]: trees of this taxon are not built unless their
+          address is in [taxon_publish]; a redirect meta still wins. *)
+  taxon_publish: string list;  (** addresses exempt from [unpublished] *)
+}
+[@@deriving show]
 
 type t = {
   trees: string list;
@@ -59,6 +67,10 @@ val home_uri : t -> URI.t
 val tag_page_address : string -> string
 (** [tag_page_address "must-preorder"] is ["tag-must-preorder"]: the address of
     the generated page for a tag with [page = true]. *)
+
+val is_unpublished : t -> taxon:string option -> address:string -> bool
+(** Whether a tree of [taxon] at [address] (e.g. ["@jpears"]) is kept out of
+    the output by its taxon's [unpublished] rule. *)
 
 val taxon_page_address : string -> string
 (** [taxon_page_address "Person"] is ["taxon-person"]: the address of the

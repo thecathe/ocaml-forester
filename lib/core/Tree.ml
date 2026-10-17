@@ -35,6 +35,9 @@ type evaluated = {
   include_in_manifest: bool;
   redirect_uri: URI.t option;
   hidden: bool;
+  unpublished: bool;
+      (* kept out of the output by its taxon's `unpublished` rule: links to
+         it render as their text alone *)
   expanded: syn option;
 }
 [@@deriving show]

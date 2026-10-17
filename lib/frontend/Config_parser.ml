@@ -335,7 +335,8 @@ let parse lexbuf filename =
             "`author` must be a string or an array of strings"
       end
     in
-    (* [forest.taxon.<Name>]: page = true | false (default true) *)
+    (* [forest.taxon.<Name>]: page = true | false (default true);
+       unpublished = true | false (default false); publish = [addresses] *)
     let taxon_rules =
       let@ k, v = List.map @~ sub_table ~k:"taxon" in
       let taxon_name = key_name k in
@@ -349,7 +350,26 @@ let parse lexbuf filename =
             claim ["forest"; "taxon"; taxon_name; "page"];
             b
         in
-        Config.{taxon_name; taxon_page}
+        let taxon_unpublished =
+          match bool_field ~where t "unpublished" with
+          | None -> false
+          | Some b ->
+            claim ["forest"; "taxon"; taxon_name; "unpublished"];
+            b
+        in
+        let taxon_publish =
+          match Toml.Types.Table.find_opt (Toml.Types.Table.Key.of_string "publish") t with
+          | None -> []
+          | Some (Toml.Types.TArray Toml.Types.NodeEmpty) ->
+            claim ["forest"; "taxon"; taxon_name; "publish"];
+            []
+          | Some (Toml.Types.TArray (Toml.Types.NodeString l)) ->
+            claim ["forest"; "taxon"; taxon_name; "publish"];
+            l
+          | Some _ ->
+            invalid_value ~where "`publish` must be an array of addresses"
+        in
+        Config.{taxon_name; taxon_page; taxon_unpublished; taxon_publish}
       | _ -> invalid_value ~where:"forest.taxon" "expected a table per taxon"
     in
     begin if not (Key_set.is_empty !keys) then

@@ -373,7 +373,8 @@ let is_hidden_by_tag (config : Config.t) (fm : T.content T.frontmatter) : bool =
   | T.Uri_vertex _ -> false
 
 let plant_resource ?(route_locally = true) ?(include_in_manifest = true)
-    ?(redirect_uri = None) ?(hidden = false) resource forest =
+    ?(redirect_uri = None) ?(hidden = false) ?(unpublished = false) resource
+    forest =
   let module Graphs = (val forest.graphs) in
   Forest.analyse_resource forest.graphs resource;
   let@ uri = Option.iter @~ T.uri_for_resource resource in
@@ -399,6 +400,7 @@ let plant_resource ?(route_locally = true) ?(include_in_manifest = true)
           include_in_manifest;
           redirect_uri;
           hidden;
+          unpublished;
         }
   | Some (Tree.Expanded syn) ->
     forest.={uri} <-
@@ -410,6 +412,7 @@ let plant_resource ?(route_locally = true) ?(include_in_manifest = true)
           include_in_manifest;
           redirect_uri;
           hidden;
+          unpublished;
         }
   | _ ->
     forest.={uri} <-
@@ -421,15 +424,29 @@ let plant_resource ?(route_locally = true) ?(include_in_manifest = true)
           include_in_manifest;
           redirect_uri;
           hidden;
+          unpublished;
         }
+
+(* The address a tree is known by, e.g. "@jpears": its URI's last path
+   component. *)
+let address_of_uri uri =
+  match List.rev (List.filter (( <> ) "") (URI.path_components uri)) with
+  | last :: _ -> last
+  | [] -> ""
 
 (* Entry point for planting a locally-authored article (as opposed to a
    foreign/imported resource, which goes through `plant_resource` directly
    with its own `route_locally`/`include_in_manifest` config). Applies the
-   configured rules: a tag with `behaviour = "hide"` plants the article as
-   non-local, manifest-excluded and `hidden` (so it is also filtered from
-   generated backmatter sections); a meta resolving to a redirect behaviour
-   does the same but records its target for routing. *)
+   configured rules, first match wins:
+   - a tag with `behaviour = "hide"` plants the article as non-local,
+     manifest-excluded and `hidden` (so it is also filtered from generated
+     backmatter sections);
+   - a meta resolving to a redirect behaviour does the same but records its
+     target for routing;
+   - a taxon with `unpublished = true` (and the address not in its
+     `publish` list) does the same, flagged `unpublished`: links to it
+     render as their text alone, and it is not a leak, since nothing about
+     it is published. *)
 let plant_article (article : T.content T.article) (forest : t) : unit =
   let article = apply_directory_tags forest article in
   let fm = article.frontmatter in
@@ -438,7 +455,19 @@ let plant_article (article : T.content T.article) (forest : t) : unit =
       (T.Article article) forest
   else
     match redirect_uri_of_frontmatter forest.config fm with
-    | None -> plant_resource (T.Article article) forest
+    | None ->
+      let unpublished =
+        match fm.uri with
+        | None -> false
+        | Some uri ->
+          Config.is_unpublished forest.config
+            ~taxon:(taxon_of_frontmatter fm)
+            ~address:(address_of_uri uri)
+      in
+      if unpublished then
+        plant_resource ~route_locally:false ~include_in_manifest:false
+          ~unpublished:true (T.Article article) forest
+      else plant_resource (T.Article article) forest
     | Some target ->
       plant_resource ~route_locally:false ~include_in_manifest:false
         ~redirect_uri:(Some target) (T.Article article) forest
@@ -538,3 +567,13 @@ and lsp_uri_of_identity (identity : identity) (forest : t) : Lsp.Uri.t option =
 
 let source_path_of_uri uri forest =
   Option.map Lsp.Uri.to_path @@ lsp_uri_of_uri uri forest
+
+(* Whether [uri] is a tree kept out of the output by its taxon's
+   `unpublished` rule. *)
+let is_unpublished (forest : t) uri =
+  match forest.={uri} with
+  | None -> false
+  | Some tree -> (
+    match Tree.to_evaluated tree with
+    | Some {unpublished; _} -> unpublished
+    | None -> false)

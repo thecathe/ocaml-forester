@@ -28,7 +28,10 @@ let is_redirect_flagged (forest : State.t) (uri : URI.t) : bool =
   | None -> false
   | Some tree -> (
     match Tree.to_evaluated tree with
-    | Some {redirect_uri = Some _; _} | Some {hidden = true; _} -> true
+    | Some {redirect_uri = Some _; _}
+    | Some {hidden = true; _}
+    | Some {unpublished = true; _} ->
+      true
     | _ -> false)
 
 let get_sorted_articles (forest : State.t) addrs =

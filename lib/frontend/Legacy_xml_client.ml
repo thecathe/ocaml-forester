@@ -352,6 +352,13 @@ and render_transclusion ~env (transclusion : T.transclusion) : P.node list =
   | Some content -> render_content ~env content
 
 and render_link ~env (link : T.content T.link) : P.node list =
+  if State.is_unpublished env.forest link.href then
+    (* An unpublished tree (its taxon's rule, no redirect) has no page and no
+       address worth showing: the link is just its text. *)
+    render_content ~env link.content
+  else render_published_link ~env link
+
+and render_published_link ~env (link : T.content T.link) : P.node list =
   warn_if_hidden_reference ~env ~kind:"links to" link.href;
   let article_opt = State.get_article link.href env.forest in
   (* A redirect-flagged local tree is still a known article (`article_opt`
