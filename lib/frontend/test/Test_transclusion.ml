@@ -51,6 +51,7 @@ let () =
          include_in_manifest = true;
          redirect_uri = None;
          hidden = false;
+         unpublished = false;
        };
   let forest = {(State.make ~env ~config ~dev:false ()) with index} in
   let print_transclusion : T.transclusion -> unit =

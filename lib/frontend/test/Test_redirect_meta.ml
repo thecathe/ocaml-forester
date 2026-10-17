@@ -449,6 +449,97 @@ let test_taxon_links_to_page ~env () =
         "taxon without a page has no href" false
         (contains_substring ~needle:{|taxon href|} (render "b")))
 
+(* [forest.taxon.Person] unpublished = true, publish = ["me"]: a Person with a
+   redirect still redirects; one without is not built and links to it are
+   plain text; "me" is listed, so keeps its page. *)
+let unpublished_config =
+  {
+    config with
+    taxon_rules =
+      [
+        {
+          taxon_name = "Person";
+          taxon_page = false;
+          taxon_unpublished = true;
+          taxon_publish = ["me"];
+        };
+      ];
+  }
+
+let unpublished_trees =
+  [
+    {
+      path = "redir.tree";
+      content =
+        {|\title{Redir}\taxon{Person}\meta{redirect}{https://example.com/redir}|};
+    };
+    {path = "quiet.tree"; content = {|\title{Quiet Person}\taxon{Person}\p{Secret bio. [Me](me)}|}};
+    {path = "me.tree"; content = {|\title{Me}\taxon{Person}|}};
+    {
+      path = "paper.tree";
+      content =
+        {|\title{Paper}\author{quiet}\p{[Quiet](quiet) [Redir](redir) [Me](me)}\transclude{quiet}|};
+    };
+  ]
+
+let test_unpublished_taxon ~env () =
+  with_forest ~config:unpublished_config ~raw_trees:unpublished_trees ~env
+    (fun forest ->
+      let ev name = evaluated_of ~forest (URI_scheme.named_uri ~base:config.url name) in
+      Alcotest.(check bool) "unpublished person is not routed" false (ev "quiet").route_locally;
+      Alcotest.(check bool) "and flagged unpublished" true (ev "quiet").unpublished;
+      Alcotest.(check bool)
+        "and excluded from the manifest" false (ev "quiet").include_in_manifest;
+      Alcotest.(check (option uri))
+        "a redirect still wins over unpublished"
+        (Some (URI.of_string_exn "https://example.com/redir"))
+        (ev "redir").redirect_uri;
+      Alcotest.(check bool) "redirected person is not unpublished" false (ev "redir").unpublished;
+      Alcotest.(check bool) "a listed address keeps its page" true (ev "me").route_locally;
+      Forester.render_forest ~dev:false ~forest;
+      Alcotest.(check bool) "no output for the unpublished person" false (Sys.file_exists "output/quiet");
+      Alcotest.(check bool) "output for the listed person" true (Sys.file_exists "output/me/index.xml"))
+
+let test_unpublished_links_are_text ~env () =
+  with_forest ~config:unpublished_config ~raw_trees:unpublished_trees ~env
+    (fun forest ->
+      let article name =
+        match State.get_article (URI_scheme.named_uri ~base:config.url name) forest with
+        | Some a -> a
+        | None -> Alcotest.fail (name ^ " not found")
+      in
+      let rendered =
+        Format.asprintf "%a" (Legacy_xml_client.pp_xml ~forest ?stylesheet:None) (article "paper")
+      in
+      Alcotest.(check bool) "the name is still there" true (contains_substring ~needle:"Quiet" rendered);
+      Alcotest.(check bool)
+        "a transclusion of them shows nothing" false
+        (contains_substring ~needle:"Secret bio" rendered);
+      Alcotest.(check bool)
+        "but not as a link" false
+        (contains_substring ~needle:{|href="/quiet/"|} rendered);
+      Alcotest.(check bool)
+        "the redirected person links to their target" true
+        (contains_substring ~needle:{|href="https://example.com/redir"|} rendered);
+      Alcotest.(check bool)
+        "the listed person is an ordinary link" true
+        (contains_substring ~needle:{|href="/me/"|} rendered);
+      Alcotest.(check int)
+        "no hidden-reference warnings: nothing leaks" 0
+        (List.length (render_collecting_warnings ~forest (article "paper")));
+      let me = Format.asprintf "%a" (Legacy_xml_client.pp_xml ~forest ?stylesheet:None) (article "me") in
+      let backmatter =
+        match index_of_substring ~needle:"backmatter" me with
+        | Some i -> String.sub me i (String.length me - i)
+        | None -> Alcotest.fail "no backmatter"
+      in
+      Alcotest.(check bool)
+        "the unpublished person is not a backlink" false
+        (contains_substring ~needle:{|<fr:title text="Quiet Person">|} backmatter);
+      Alcotest.(check bool)
+        "an author credit to them is plain text" true
+        (contains_substring ~needle:"<fr:author>Quiet Person</fr:author>" backmatter))
+
 let () =
   let@ env = Eio_main.run in
   Logs.set_level (Some Debug);
@@ -466,6 +557,13 @@ let () =
             (test_taxon_rule_overrides_redirect ~env);
           test_case "rich [text](url) redirect target" `Quick
             (test_rich_redirect_target ~env);
+        ] );
+      ( "unpublished taxon",
+        [
+          test_case "not built unless listed; a redirect wins" `Quick
+            (test_unpublished_taxon ~env);
+          test_case "links become text, nothing leaks" `Quick
+            (test_unpublished_links_are_text ~env);
         ] );
       ( "tag behaviour",
         [

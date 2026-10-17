@@ -133,7 +133,7 @@ let test_schema () =
     (List.mem {tag = "must-preorder"; tag_behaviour = Show; page = true} c.tag_rules);
   Alcotest.(check bool)
     "taxon page opt-out" true
-    (c.taxon_rules = [{taxon_name = "Person"; taxon_page = false}]);
+    (c.taxon_rules = [{taxon_name = "Person"; taxon_page = false; taxon_unpublished = false; taxon_publish = []}]);
   Alcotest.(check (list string))
     "new-tree authors" ["@jpears"; "@cathe"] c.new_authors;
   Alcotest.(check bool)
@@ -143,6 +143,37 @@ let test_schema () =
     "prefix rules" true
     (List.mem {prefix = '#'; prefix_taxon = "Thing"} c.prefix_rules
      && List.mem {prefix = '~'; prefix_taxon = "Place"} c.prefix_rules)
+
+let test_unpublished_taxon () =
+  let c =
+    Forester_core.Reporter.easy_run @@ fun () ->
+    Config_parser.parse_forest_config_string
+      {|
+      [forest]
+      url = "/"
+      [forest.taxon.Person]
+      page = false
+      unpublished = true
+      publish = ["@jpears"]
+      |}
+  in
+  Alcotest.(check bool)
+    "unpublished taxon with exceptions" true
+    (c.taxon_rules
+    = [
+        {
+          taxon_name = "Person";
+          taxon_page = false;
+          taxon_unpublished = true;
+          taxon_publish = ["@jpears"];
+        };
+      ]);
+  Alcotest.(check bool)
+    "a listed address is published" false
+    (Config.is_unpublished c ~taxon:(Some "Person") ~address:"@jpears");
+  Alcotest.(check bool)
+    "any other is not" true
+    (Config.is_unpublished c ~taxon:(Some "Person") ~address:"@someone")
 
 let test_vetoed_prefix () =
   let accepted p =
@@ -180,5 +211,6 @@ let () =
         [
           test_case "it parses" `Quick test_schema;
           test_case "unsafe prefixes are vetoed" `Quick test_vetoed_prefix;
+          test_case "unpublished taxon" `Quick test_unpublished_taxon;
         ] );
     ]

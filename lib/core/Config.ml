@@ -43,8 +43,19 @@ type directory_rule = {dir: string; dir_tags: string list}
 
 (* Per-taxon settings. Every taxon in use gets a generated page unless
    `page = false`; only the page generator consults this, the compiler just
-   links a taxon to its page when that page exists. *)
-type taxon_rule = {taxon_name: string; taxon_page: bool}
+   links a taxon to its page when that page exists.
+
+   `unpublished = true` keeps every tree of the taxon out of the output
+   unless its address is listed in `publish`: such a tree is not built, is
+   filtered from generated backmatter, and links to it render as their text
+   alone. A redirect meta still wins (the tree redirects instead), so
+   unpublished means "redirect if you can, otherwise say nothing". *)
+type taxon_rule = {
+  taxon_name: string;
+  taxon_page: bool;
+  taxon_unpublished: bool;
+  taxon_publish: string list;
+}
 [@@deriving show, repr]
 
 type t = {
@@ -107,3 +118,14 @@ let slug name =
 
 let tag_page_address tag = "tag-" ^ slug tag
 let taxon_page_address taxon = "taxon-" ^ slug taxon
+
+(* Whether a tree of [taxon] at [address] is unpublished by its taxon rule. *)
+let is_unpublished (config : t) ~taxon ~address =
+  match taxon with
+  | None -> false
+  | Some taxon ->
+    List.exists
+      (fun r ->
+        r.taxon_name = taxon && r.taxon_unpublished
+        && not (List.mem address r.taxon_publish))
+      config.taxon_rules
