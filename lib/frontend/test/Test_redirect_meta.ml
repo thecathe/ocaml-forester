@@ -473,12 +473,12 @@ let unpublished_trees =
       content =
         {|\title{Redir}\taxon{Person}\meta{redirect}{https://example.com/redir}|};
     };
-    {path = "quiet.tree"; content = {|\title{Quiet Person}\taxon{Person}\p{[Me](me)}|}};
+    {path = "quiet.tree"; content = {|\title{Quiet Person}\taxon{Person}\p{Secret bio. [Me](me)}|}};
     {path = "me.tree"; content = {|\title{Me}\taxon{Person}|}};
     {
       path = "paper.tree";
       content =
-        {|\title{Paper}\author{quiet}\p{[Quiet](quiet) [Redir](redir) [Me](me)}|};
+        {|\title{Paper}\author{quiet}\p{[Quiet](quiet) [Redir](redir) [Me](me)}\transclude{quiet}|};
     };
   ]
 
@@ -512,6 +512,9 @@ let test_unpublished_links_are_text ~env () =
         Format.asprintf "%a" (Legacy_xml_client.pp_xml ~forest ?stylesheet:None) (article "paper")
       in
       Alcotest.(check bool) "the name is still there" true (contains_substring ~needle:"Quiet" rendered);
+      Alcotest.(check bool)
+        "a transclusion of them shows nothing" false
+        (contains_substring ~needle:"Secret bio" rendered);
       Alcotest.(check bool)
         "but not as a link" false
         (contains_substring ~needle:{|href="/quiet/"|} rendered);

@@ -345,6 +345,15 @@ and warn_if_hidden_reference ~env ~kind uri =
       end
 
 and render_transclusion ~env (transclusion : T.transclusion) : P.node list =
+  match transclusion.target with
+  | T.Full _ when State.is_unpublished env.forest transclusion.href ->
+    (* An unpublished tree's content is never shown; only its title, e.g.
+       in an author credit (a Title transclusion), renders as text. *)
+    []
+  | _ -> render_published_transclusion ~env transclusion
+
+and render_published_transclusion ~env (transclusion : T.transclusion) :
+    P.node list =
   warn_if_hidden_reference ~env ~kind:"transcludes" transclusion.href;
   match State.get_content_of_transclusion transclusion env.forest with
   | None ->
