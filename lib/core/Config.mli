@@ -23,6 +23,7 @@ type tag_rule = {
   tag: string;
   tag_behaviour: tag_behaviour;
   page: bool;
+  display: bool;
 }
 [@@deriving show]
 
@@ -54,6 +55,11 @@ type t = {
       (** Addresses written as `\author{...}` under the date of every tree
           created by `forester new`. *)
   taxon_rules: taxon_rule list;
+  publish_tags: string list;
+      (** [[forest.publish] tags = [...]]: when non-empty, only trees carrying
+          one of these tags are published; every other tree is unpublished
+          (as by a taxon's [unpublished] rule). A publish tag also overrides
+          its taxon's [unpublished] rule. *)
 }
 [@@deriving show]
 
@@ -68,9 +74,16 @@ val tag_page_address : string -> string
 (** [tag_page_address "must-preorder"] is ["tag-must-preorder"]: the address of
     the generated page for a tag with [page = true]. *)
 
-val is_unpublished : t -> taxon:string option -> address:string -> bool
-(** Whether a tree of [taxon] at [address] (e.g. ["@jpears"]) is kept out of
-    the output by its taxon's [unpublished] rule. *)
+val is_unpublished :
+  t -> taxon:string option -> address:string -> tags:string list -> bool
+(** Whether a tree of [taxon] at [address] (e.g. ["@jpears"]) with [tags]
+    (directory tags included) is kept out of the output: by [publish_tags],
+    when set, unless it carries one; otherwise by its taxon's [unpublished]
+    rule, unless its address is in that rule's [publish] list or it carries
+    a publish tag. *)
+
+val is_displayed_tag : t -> string -> bool
+(** Whether a tag is shown in page headers: false for [display = false]. *)
 
 val taxon_page_address : string -> string
 (** [taxon_page_address "Person"] is ["taxon-person"]: the address of the

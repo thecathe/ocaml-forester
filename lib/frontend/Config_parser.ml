@@ -253,7 +253,8 @@ let parse lexbuf filename =
       in
       user @ default.meta_rules
     in
-    (* [forest.tag.<name>]: behaviour = "hide" | "show"; page = true | false *)
+    (* [forest.tag.<name>]: behaviour = "hide" | "show"; page = true | false;
+       display = true | false (default true: shown in page headers) *)
     let tag_rules =
       let@ k, v = List.map @~ sub_table ~k:"tag" in
       let tag = key_name k in
@@ -274,7 +275,14 @@ let parse lexbuf filename =
             claim ["forest"; "tag"; tag; "page"];
             b
         in
-        Config.{tag; tag_behaviour; page}
+        let display =
+          match bool_field ~where t "display" with
+          | None -> true
+          | Some b ->
+            claim ["forest"; "tag"; tag; "display"];
+            b
+        in
+        Config.{tag; tag_behaviour; page; display}
       | _ -> invalid_value ~where:"forest.tag" "expected a table per tag"
     in
     (* [forest.prefix."<punct>"]: taxon = "<Taxon>" *)
@@ -372,6 +380,25 @@ let parse lexbuf filename =
         Config.{taxon_name; taxon_page; taxon_unpublished; taxon_publish}
       | _ -> invalid_value ~where:"forest.taxon" "expected a table per taxon"
     in
+    (* [forest.publish]: tags = ["<tag>", ...] *)
+    let publish_tags =
+      match get tbl (forest |-- key "publish" |-- table) with
+      | None -> []
+      | Some t -> begin
+        match
+          Toml.Types.Table.find_opt (Toml.Types.Table.Key.of_string "tags") t
+        with
+        | Some (Toml.Types.TArray (Toml.Types.NodeString l)) ->
+          claim ["forest"; "publish"; "tags"];
+          l
+        | Some (Toml.Types.TArray Toml.Types.NodeEmpty) ->
+          claim ["forest"; "publish"; "tags"];
+          []
+        | Some _ ->
+          invalid_value ~where:"forest.publish" "`tags` must be an array of strings"
+        | None -> invalid_value ~where:"forest.publish" "missing required `tags`"
+      end
+    in
     begin if not (Key_set.is_empty !keys) then
       let keys =
         !keys |> Key_set.to_list
@@ -379,7 +406,7 @@ let parse lexbuf filename =
       in
       Reporter.emit (Uninterpreted_config_options keys)
     end;
-    Config.{url; assets; trees; foreign; home; meta_rules; tag_rules; prefix_rules; directory_rules; new_authors; taxon_rules}
+    Config.{url; assets; trees; foreign; home; meta_rules; tag_rules; prefix_rules; directory_rules; new_authors; taxon_rules; publish_tags}
 
 let parse_forest_config_string str =
   let lexbuf = Lexing.from_string str in

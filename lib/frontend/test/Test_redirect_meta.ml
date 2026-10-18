@@ -195,7 +195,7 @@ let hide_raw_trees =
 let hide_config =
   {
     config with
-    tag_rules = [{tag = "private"; tag_behaviour = Hide; page = false}];
+    tag_rules = [{tag = "private"; tag_behaviour = Hide; page = false; display = true}];
   }
 
 let test_tag_hide ~env () =
@@ -243,7 +243,7 @@ let test_tag_hide_excluded_from_backlinks ~env () =
 
 let test_tag_show_is_default ~env () =
   let config =
-    {config with tag_rules = [{tag = "private"; tag_behaviour = Show; page = false}]}
+    {config with tag_rules = [{tag = "private"; tag_behaviour = Show; page = false; display = true}]}
   in
   with_forest ~config ~raw_trees:hide_raw_trees ~env (fun forest ->
       let priv = evaluated_of ~forest (URI_scheme.named_uri ~base:config.url "priv") in
@@ -256,8 +256,8 @@ let test_tags_emitted_with_page_links ~env () =
       config with
       tag_rules =
         [
-          {tag = "must-preorder"; tag_behaviour = Show; page = true};
-          {tag = "nopage"; tag_behaviour = Show; page = true};
+          {tag = "must-preorder"; tag_behaviour = Show; page = true; display = true};
+          {tag = "nopage"; tag_behaviour = Show; page = true; display = true};
         ];
     }
   in
@@ -388,7 +388,7 @@ let test_directory_tag_mask ~env () =
       config with
       trees = ["trees"; "private"];
       directory_rules = [{dir = "private"; dir_tags = ["private"]}];
-      tag_rules = [{tag = "private"; tag_behaviour = Hide; page = false}];
+      tag_rules = [{tag = "private"; tag_behaviour = Hide; page = false; display = true}];
     }
   in
   let raw_trees =
@@ -540,6 +540,70 @@ let test_unpublished_links_are_text ~env () =
         "an author credit to them is plain text" true
         (contains_substring ~needle:"<fr:author>Quiet Person</fr:author>" backmatter))
 
+(* [forest.publish] tags = ["public"]: only trees tagged public (directly or
+   by a directory rule) are built. An untagged tree is unpublished, so links
+   to it are text; an untagged redirect still redirects; the tag beats the
+   Person taxon's unpublished rule; and with display = false the tag is not
+   shown in page headers. *)
+let publish_config =
+  {
+    config with
+    trees = ["trees"; "pub"];
+    publish_tags = ["public"];
+    directory_rules = [{dir = "pub"; dir_tags = ["public"]}];
+    tag_rules = [{tag = "public"; tag_behaviour = Show; page = false; display = false}];
+    taxon_rules =
+      [{taxon_name = "Person"; taxon_page = false; taxon_unpublished = true; taxon_publish = []}];
+  }
+
+let publish_trees =
+  [
+    {
+      path = "home.tree";
+      content =
+        {|\title{Home}\tag{public}\tag{notes}\p{[Note](note) [Redir](redir) [Me](me) [Gen](gen)}|};
+    };
+    {path = "note.tree"; content = {|\title{Draft Note}\p{Secret draft.}|}};
+    {
+      path = "redir.tree";
+      content = {|\title{Redir}\taxon{Person}\meta{redirect}{https://example.com/redir}|};
+    };
+    {path = "me.tree"; content = {|\title{Me}\taxon{Person}\tag{public}|}};
+    {path = "stranger.tree"; content = {|\title{Stranger}\taxon{Person}|}};
+    {path = "pub/gen.tree"; content = {|\title{Gen}|}};
+  ]
+
+let test_publish_tags ~env () =
+  with_forest ~config:publish_config ~raw_trees:publish_trees ~env (fun forest ->
+      let ev name = evaluated_of ~forest (URI_scheme.named_uri ~base:config.url name) in
+      Alcotest.(check bool) "a tagged tree is built" true (ev "home").route_locally;
+      Alcotest.(check bool) "an untagged tree is unpublished" true (ev "note").unpublished;
+      Alcotest.(check bool) "a tree in the tagged directory is built" true (ev "gen").route_locally;
+      Alcotest.(check bool) "the tag beats the Person rule" true (ev "me").route_locally;
+      Alcotest.(check bool) "an untagged person is unpublished" true (ev "stranger").unpublished;
+      Alcotest.(check (option uri))
+        "an untagged redirect still redirects"
+        (Some (URI.of_string_exn "https://example.com/redir"))
+        (ev "redir").redirect_uri;
+      let home =
+        match State.get_article (URI_scheme.named_uri ~base:config.url "home") forest with
+        | Some a -> Format.asprintf "%a" (Legacy_xml_client.pp_xml ~forest ?stylesheet:None) a
+        | None -> Alcotest.fail "home not found"
+      in
+      Alcotest.(check bool) "the link to the note is text" true
+        (contains_substring ~needle:"Note" home && not (contains_substring ~needle:{|href="/note/"|} home));
+      Alcotest.(check bool) "the redirect links to its target" true
+        (contains_substring ~needle:{|href="https://example.com/redir"|} home);
+      Alcotest.(check bool) "published trees are ordinary links" true
+        (contains_substring ~needle:{|href="/me/"|} home && contains_substring ~needle:{|href="/gen/"|} home);
+      Alcotest.(check bool) "the public tag is not shown" false
+        (contains_substring ~needle:{|name="public"|} home);
+      Alcotest.(check bool) "other tags still are" true
+        (contains_substring ~needle:{|name="notes"|} home);
+      Forester.render_forest ~dev:false ~forest;
+      Alcotest.(check bool) "no output for the note" false (Sys.file_exists "output/note");
+      Alcotest.(check bool) "output for home" true (Sys.file_exists "output/home/index.xml"))
+
 let () =
   let@ env = Eio_main.run in
   Logs.set_level (Some Debug);
@@ -565,6 +629,8 @@ let () =
           test_case "links become text, nothing leaks" `Quick
             (test_unpublished_links_are_text ~env);
         ] );
+      ( "publish tags",
+        [test_case "only tagged trees are built" `Quick (test_publish_tags ~env)] );
       ( "tag behaviour",
         [
           test_case "hide excludes output and manifest" `Quick
