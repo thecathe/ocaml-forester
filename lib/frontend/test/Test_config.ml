@@ -32,6 +32,7 @@ let test_parsing () =
         directory_rules = [];
         new_authors = [];
         taxon_rules = [];
+        publish_tags = [];
       }
     begin
       Forester_core.Reporter.easy_run @@ fun () ->
@@ -61,6 +62,7 @@ let test_missing_fields () =
         directory_rules = [];
         new_authors = [];
         taxon_rules = [];
+        publish_tags = [];
       }
     ( Forester_core.Reporter.easy_run @@ fun () ->
       Config_parser.parse_forest_config_string
@@ -127,10 +129,10 @@ let test_schema () =
     (List.mem {key = "external"; taxon = None; behaviour = External} c.meta_rules);
   Alcotest.(check bool)
     "tag hide rule" true
-    (List.mem {tag = "private"; tag_behaviour = Hide; page = false} c.tag_rules);
+    (List.mem {tag = "private"; tag_behaviour = Hide; page = false; display = true} c.tag_rules);
   Alcotest.(check bool)
     "tag page rule defaults to show" true
-    (List.mem {tag = "must-preorder"; tag_behaviour = Show; page = true} c.tag_rules);
+    (List.mem {tag = "must-preorder"; tag_behaviour = Show; page = true; display = true} c.tag_rules);
   Alcotest.(check bool)
     "taxon page opt-out" true
     (c.taxon_rules = [{taxon_name = "Person"; taxon_page = false; taxon_unpublished = false; taxon_publish = []}]);
@@ -170,10 +172,38 @@ let test_unpublished_taxon () =
       ]);
   Alcotest.(check bool)
     "a listed address is published" false
-    (Config.is_unpublished c ~taxon:(Some "Person") ~address:"@jpears");
+    (Config.is_unpublished c ~taxon:(Some "Person") ~address:"@jpears" ~tags:[]);
   Alcotest.(check bool)
     "any other is not" true
-    (Config.is_unpublished c ~taxon:(Some "Person") ~address:"@someone")
+    (Config.is_unpublished c ~taxon:(Some "Person") ~address:"@someone" ~tags:[])
+
+let test_publish_tags () =
+  let c =
+    Forester_core.Reporter.easy_run @@ fun () ->
+    Config_parser.parse_forest_config_string
+      {|
+      [forest]
+      url = "/"
+      [forest.publish]
+      tags = ["public"]
+      [forest.tag.public]
+      display = false
+      [forest.taxon.Person]
+      unpublished = true
+      |}
+  in
+  Alcotest.(check (list string)) "publish tags parsed" ["public"] c.publish_tags;
+  Alcotest.(check bool) "a hidden-display tag" false (Config.is_displayed_tag c "public");
+  Alcotest.(check bool) "other tags display" true (Config.is_displayed_tag c "notes");
+  Alcotest.(check bool)
+    "an untagged tree is unpublished" true
+    (Config.is_unpublished c ~taxon:None ~address:"note" ~tags:["notes"]);
+  Alcotest.(check bool)
+    "a tagged tree is published" false
+    (Config.is_unpublished c ~taxon:None ~address:"home" ~tags:["public"]);
+  Alcotest.(check bool)
+    "the tag beats an unpublished taxon" false
+    (Config.is_unpublished c ~taxon:(Some "Person") ~address:"@me" ~tags:["public"])
 
 let test_vetoed_prefix () =
   let accepted p =
@@ -212,5 +242,6 @@ let () =
           test_case "it parses" `Quick test_schema;
           test_case "unsafe prefixes are vetoed" `Quick test_vetoed_prefix;
           test_case "unpublished taxon" `Quick test_unpublished_taxon;
+          test_case "publish tags" `Quick test_publish_tags;
         ] );
     ]

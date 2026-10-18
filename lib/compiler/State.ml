@@ -372,6 +372,14 @@ let is_hidden_by_tag (config : Config.t) (fm : T.content T.frontmatter) : bool =
   end
   | T.Uri_vertex _ -> false
 
+(* The names of a frontmatter's plain-text tags. *)
+let tag_names (fm : T.content T.frontmatter) : string list =
+  let@ vertex = List.filter_map @~ fm.tags in
+  match vertex with
+  | T.Content_vertex content ->
+    Option.map String.trim (text_of_simple_content content)
+  | T.Uri_vertex _ -> None
+
 let plant_resource ?(route_locally = true) ?(include_in_manifest = true)
     ?(redirect_uri = None) ?(hidden = false) ?(unpublished = false) resource
     forest =
@@ -462,7 +470,7 @@ let plant_article (article : T.content T.article) (forest : t) : unit =
         | Some uri ->
           Config.is_unpublished forest.config
             ~taxon:(taxon_of_frontmatter fm)
-            ~address:(address_of_uri uri)
+            ~address:(address_of_uri uri) ~tags:(tag_names fm)
       in
       if unpublished then
         plant_resource ~route_locally:false ~include_in_manifest:false

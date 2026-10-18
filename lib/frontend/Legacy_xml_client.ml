@@ -189,6 +189,8 @@ and render_tags ~env (frontmatter : _ T.frontmatter) =
     match vertex with
     | T.Content_vertex content ->
       Option.map String.trim (State.text_of_simple_content content)
+      |> Option.to_list
+      |> List.find_opt (Config.is_displayed_tag env.forest.config)
     | T.Uri_vertex _ -> None
   in
   if tags = [] then X.null []

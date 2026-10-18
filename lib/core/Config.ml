@@ -28,6 +28,7 @@ type tag_rule = {
   tag: string;
   tag_behaviour: tag_behaviour;
   page: bool;
+  display: bool;
 }
 [@@deriving show, repr]
 
@@ -70,6 +71,7 @@ type t = {
   directory_rules: directory_rule list;
   new_authors: string list;
   taxon_rules: taxon_rule list;
+  publish_tags: string list;
 }
 [@@deriving show, repr]
 
@@ -94,6 +96,7 @@ let default ?(url = default_url) () : t =
     directory_rules = [];
     new_authors = [];
     taxon_rules = [];
+    publish_tags = [];
   }
 
 let home_uri config = config.home
@@ -119,13 +122,22 @@ let slug name =
 let tag_page_address tag = "tag-" ^ slug tag
 let taxon_page_address taxon = "taxon-" ^ slug taxon
 
-(* Whether a tree of [taxon] at [address] is unpublished by its taxon rule. *)
-let is_unpublished (config : t) ~taxon ~address =
-  match taxon with
-  | None -> false
-  | Some taxon ->
-    List.exists
-      (fun r ->
-        r.taxon_name = taxon && r.taxon_unpublished
-        && not (List.mem address r.taxon_publish))
-      config.taxon_rules
+(* Whether a tree is unpublished: by the publish rule (only trees with a
+   publish tag are published), or else by its taxon rule. A publish tag
+   overrides the taxon rule, so `\tag{public}` publishes one person. *)
+let is_unpublished (config : t) ~taxon ~address ~tags =
+  let publish_tagged = List.exists (fun t -> List.mem t config.publish_tags) tags in
+  if publish_tagged then false
+  else if config.publish_tags <> [] then true
+  else
+    match taxon with
+    | None -> false
+    | Some taxon ->
+      List.exists
+        (fun r ->
+          r.taxon_name = taxon && r.taxon_unpublished
+          && not (List.mem address r.taxon_publish))
+        config.taxon_rules
+
+let is_displayed_tag (config : t) tag =
+  not (List.exists (fun r -> r.tag = tag && not r.display) config.tag_rules)
