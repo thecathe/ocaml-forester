@@ -129,10 +129,10 @@ let test_schema () =
     (List.mem {key = "external"; taxon = None; behaviour = External} c.meta_rules);
   Alcotest.(check bool)
     "tag hide rule" true
-    (List.mem {tag = "private"; tag_behaviour = Hide; page = false; display = true} c.tag_rules);
+    (List.mem {tag = "private"; tag_behaviour = Hide; page = false; display = true; title = None; label = None} c.tag_rules);
   Alcotest.(check bool)
     "tag page rule defaults to show" true
-    (List.mem {tag = "must-preorder"; tag_behaviour = Show; page = true; display = true} c.tag_rules);
+    (List.mem {tag = "must-preorder"; tag_behaviour = Show; page = true; display = true; title = None; label = None} c.tag_rules);
   Alcotest.(check bool)
     "taxon page opt-out" true
     (c.taxon_rules = [{taxon_name = "Person"; taxon_page = false; taxon_unpublished = false; taxon_publish = []}]);
@@ -205,6 +205,45 @@ let test_publish_tags () =
     "the tag beats an unpublished taxon" false
     (Config.is_unpublished c ~taxon:(Some "Person") ~address:"@me" ~tags:["public"])
 
+let tag_label_toml =
+  {|
+  [forest]
+  url = "/"
+  [forest.tag."~srepls"]
+  title = "S-REPLS"
+  page = true
+  [forest.tag.mebi]
+  title = "MEBI"
+  label = "Mebi"
+  [forest.tag.notes]
+  label = "Field notes"
+  [forest.tag.plain]
+  page = true
+  |}
+
+let test_tag_labels () =
+  let warnings = ref [] in
+  let c =
+    Forester_core.Reporter.run
+      ~emit:(fun d -> warnings := d :: !warnings)
+      ~fatal:(fun _ -> Alcotest.fail "unexpected fatal diagnostic")
+      (fun () -> Config_parser.parse_forest_config_string tag_label_toml)
+  in
+  let label = Config.tag_label c in
+  Alcotest.(check string) "title is the default label" "S-REPLS" (label "~srepls");
+  Alcotest.(check string) "label beats title" "Mebi" (label "mebi");
+  Alcotest.(check string) "label without a title" "Field notes" (label "notes");
+  Alcotest.(check string) "a tag with neither is shown as itself" "plain" (label "plain");
+  Alcotest.(check string) "an unconfigured tag is shown as itself" "other" (label "other");
+  Alcotest.(check bool)
+    "title and label are interpreted, not reported as unknown options" false
+    (List.exists
+       (fun (d : _ Asai.Diagnostic.t) ->
+         match d.message with
+         | Forester_core.Reporter.Message.Uninterpreted_config_options _ -> true
+         | _ -> false)
+       !warnings)
+
 let test_vetoed_prefix () =
   let accepted p =
     Forester_core.Reporter.run
@@ -243,5 +282,6 @@ let () =
           test_case "unsafe prefixes are vetoed" `Quick test_vetoed_prefix;
           test_case "unpublished taxon" `Quick test_unpublished_taxon;
           test_case "publish tags" `Quick test_publish_tags;
+          test_case "tag title and label" `Quick test_tag_labels;
         ] );
     ]
