@@ -195,7 +195,7 @@ let hide_raw_trees =
 let hide_config =
   {
     config with
-    tag_rules = [{tag = "private"; tag_behaviour = Hide; page = false; display = true}];
+    tag_rules = [{tag = "private"; tag_behaviour = Hide; page = false; display = true; title = None; label = None}];
   }
 
 let test_tag_hide ~env () =
@@ -243,7 +243,7 @@ let test_tag_hide_excluded_from_backlinks ~env () =
 
 let test_tag_show_is_default ~env () =
   let config =
-    {config with tag_rules = [{tag = "private"; tag_behaviour = Show; page = false; display = true}]}
+    {config with tag_rules = [{tag = "private"; tag_behaviour = Show; page = false; display = true; title = None; label = None}]}
   in
   with_forest ~config ~raw_trees:hide_raw_trees ~env (fun forest ->
       let priv = evaluated_of ~forest (URI_scheme.named_uri ~base:config.url "priv") in
@@ -256,8 +256,8 @@ let test_tags_emitted_with_page_links ~env () =
       config with
       tag_rules =
         [
-          {tag = "must-preorder"; tag_behaviour = Show; page = true; display = true};
-          {tag = "nopage"; tag_behaviour = Show; page = true; display = true};
+          {tag = "must-preorder"; tag_behaviour = Show; page = true; display = true; title = None; label = None};
+          {tag = "nopage"; tag_behaviour = Show; page = true; display = true; title = None; label = None};
         ];
     }
   in
@@ -294,6 +294,50 @@ let test_tags_emitted_with_page_links ~env () =
         "unconfigured tag is listed without href" true
         (contains_substring ~needle:{|name="plain"|} rendered
          && not (contains_substring ~needle:{|name="plain" href|} rendered)))
+
+let test_tag_labels_in_header ~env () =
+  let rule tag ~title ~label : Config.tag_rule =
+    {tag; tag_behaviour = Show; page = true; display = true; title; label}
+  in
+  let config =
+    {
+      config with
+      tag_rules =
+        [
+          rule "~srepls" ~title:(Some "S-REPLS") ~label:None;
+          rule "mebi" ~title:(Some "MEBI") ~label:(Some "Mebi");
+          rule "plain" ~title:None ~label:None;
+        ];
+    }
+  in
+  let raw_trees =
+    [
+      {path = "a.tree"; content = {|\title{A}\tag{~srepls}\tag{mebi}\tag{plain}|}};
+      {path = "tag-srepls.tree"; content = {|\title{S-REPLS}\taxon{Tag}|}};
+    ]
+  in
+  with_forest ~config ~raw_trees ~env (fun forest ->
+      let article =
+        match State.get_article (URI_scheme.named_uri ~base:config.url "a") forest with
+        | Some a -> a
+        | None -> Alcotest.fail "a not found"
+      in
+      let rendered =
+        Format.asprintf "%a" (Legacy_xml_client.pp_xml ~forest ?stylesheet:None) article
+      in
+      Alcotest.(check bool)
+        "a title relabels the tag, and the link still follows the tag" true
+        (contains_substring ~needle:{|name="S-REPLS" href="/tag-srepls/"|} rendered);
+      Alcotest.(check bool)
+        "the raw tag is no longer shown" false
+        (contains_substring ~needle:{|name="~srepls"|} rendered);
+      Alcotest.(check bool)
+        "a label beats the title" true
+        (contains_substring ~needle:{|name="Mebi"|} rendered
+         && not (contains_substring ~needle:{|name="MEBI"|} rendered));
+      Alcotest.(check bool)
+        "a tag with neither is shown as itself" true
+        (contains_substring ~needle:{|name="plain"|} rendered))
 
 let render_collecting_warnings ~forest article =
   let warnings = ref [] in
@@ -388,7 +432,7 @@ let test_directory_tag_mask ~env () =
       config with
       trees = ["trees"; "private"];
       directory_rules = [{dir = "private"; dir_tags = ["private"]}];
-      tag_rules = [{tag = "private"; tag_behaviour = Hide; page = false; display = true}];
+      tag_rules = [{tag = "private"; tag_behaviour = Hide; page = false; display = true; title = None; label = None}];
     }
   in
   let raw_trees =
@@ -551,7 +595,7 @@ let publish_config =
     trees = ["trees"; "pub"];
     publish_tags = ["public"];
     directory_rules = [{dir = "pub"; dir_tags = ["public"]}];
-    tag_rules = [{tag = "public"; tag_behaviour = Show; page = false; display = false}];
+    tag_rules = [{tag = "public"; tag_behaviour = Show; page = false; display = false; title = None; label = None}];
     taxon_rules =
       [{taxon_name = "Person"; taxon_page = false; taxon_unpublished = true; taxon_publish = []}];
   }
@@ -650,5 +694,7 @@ let () =
             (test_hidden_reference_warning ~env);
           test_case "tags emitted, linked to existing pages" `Quick
             (test_tags_emitted_with_page_links ~env);
+          test_case "tag title and label relabel tags in headers" `Quick
+            (test_tag_labels_in_header ~env);
         ] );
     ]

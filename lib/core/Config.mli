@@ -24,6 +24,8 @@ type tag_rule = {
   tag_behaviour: tag_behaviour;
   page: bool;
   display: bool;
+  title: string option;
+  label: string option;
 }
 [@@deriving show]
 
@@ -84,6 +86,11 @@ val is_unpublished :
 
 val is_displayed_tag : t -> string -> bool
 (** Whether a tag is shown in page headers: false for [display = false]. *)
+
+val tag_label : t -> string -> string
+(** The text a tag is shown as in page headers: its [label], else its [title]
+    (which the page generator also uses as its page's title), else the tag
+    itself. *)
 
 val taxon_page_address : string -> string
 (** [taxon_page_address "Person"] is ["taxon-person"]: the address of the

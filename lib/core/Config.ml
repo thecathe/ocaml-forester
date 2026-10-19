@@ -29,6 +29,8 @@ type tag_rule = {
   tag_behaviour: tag_behaviour;
   page: bool;
   display: bool;
+  title: string option;
+  label: string option;
 }
 [@@deriving show, repr]
 
@@ -141,3 +143,11 @@ let is_unpublished (config : t) ~taxon ~address ~tags =
 
 let is_displayed_tag (config : t) tag =
   not (List.exists (fun r -> r.tag = tag && not r.display) config.tag_rules)
+
+(* The text a tag is shown as in page headers: its `label`, else its `title`
+   (which the page generator also gives the tag's page), else the tag. *)
+let tag_label (config : t) tag =
+  match List.find_opt (fun r -> r.tag = tag) config.tag_rules with
+  | Some {label = Some label; _} -> label
+  | Some {title = Some title; _} -> title
+  | _ -> tag

@@ -254,7 +254,10 @@ let parse lexbuf filename =
       user @ default.meta_rules
     in
     (* [forest.tag.<name>]: behaviour = "hide" | "show"; page = true | false;
-       display = true | false (default true: shown in page headers) *)
+       display = true | false (default true: shown in page headers);
+       title = "<text>" (the generated page's title, read by the page
+       generator; also the tag's header label unless `label` is set);
+       label = "<text>" (the tag's label in page headers) *)
     let tag_rules =
       let@ k, v = List.map @~ sub_table ~k:"tag" in
       let tag = key_name k in
@@ -282,7 +285,18 @@ let parse lexbuf filename =
             claim ["forest"; "tag"; tag; "display"];
             b
         in
-        Config.{tag; tag_behaviour; page; display}
+        let text_field name =
+          match string_field ~where t name with
+          | None -> None
+          | Some s when String.trim s = "" ->
+            invalid_value ~where (Printf.sprintf "`%s` must not be empty" name)
+          | Some s ->
+            claim ["forest"; "tag"; tag; name];
+            Some s
+        in
+        let title = text_field "title" in
+        let label = text_field "label" in
+        Config.{tag; tag_behaviour; page; display; title; label}
       | _ -> invalid_value ~where:"forest.tag" "expected a table per tag"
     in
     (* [forest.prefix."<punct>"]: taxon = "<Taxon>" *)

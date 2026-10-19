@@ -181,8 +181,9 @@ and render_frontmatter ~env (frontmatter : T.content T.frontmatter) : P.node =
   in
   result
 
-(* Tags a tree carries. A tag with `page = true` links to its generated page
-   (address `Config.tag_page_address`) when that page actually exists. *)
+(* Tags a tree carries, shown as `Config.tag_label`. A tag with `page = true`
+   links to its generated page (address `Config.tag_page_address`) when that
+   page actually exists. *)
 and render_tags ~env (frontmatter : _ T.frontmatter) =
   let tags =
     let@ vertex = List.filter_map @~ frontmatter.tags in
@@ -210,7 +211,7 @@ and render_tags ~env (frontmatter : _ T.frontmatter) =
         Option.map (fun _ -> uri) (State.get_article uri env.forest)
       in
       X.tag
-        (X.name "%s" tag
+        (X.name "%s" (Config.tag_label env.forest.config tag)
         :: (match page with
            | Some uri ->
              [X.href "%s" @@ URI.href_string @@ route env.forest uri]
