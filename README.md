@@ -28,6 +28,9 @@ Please mail patches by [email](https://git-send-email.io/) to
 <~jonsterling/forester-devel@lists.sr.ht>. General discussion can be mailed to
 <~jonsterling/forester-discuss@lists.sr.ht>.
 
+This fork is also built with nix: `nix develop -c dune build @lib/frontend/test/runtest`
+builds the frontend tests and runs them (see [README.nix.md](README.nix.md)).
+
 When you prepare patches, please be sure that all code is formatted as follows:
 
     dune build @fmt
